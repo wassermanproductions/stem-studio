@@ -16,3 +16,9 @@ safetensors>=0.4
 # pulls in librosa; the MVSEP checkpoints themselves download at runtime.
 demucs>=4.0
 librosa>=0.10
+
+# Optional dialogue-polish pass (--polish-dialogue): spectral-gating speech
+# enhancement that reduces residual music/effects bleed in the dialogue stem.
+# noisereduce is MIT-licensed and pure NumPy/SciPy (no model download, no native
+# build), so it installs cleanly on Python 3.13 / arm64.
+noisereduce>=3.0

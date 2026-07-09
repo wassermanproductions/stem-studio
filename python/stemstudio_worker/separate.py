@@ -97,7 +97,12 @@ def _write_wav(path: str, audio: np.ndarray, sr: int) -> None:
     sf.write(path, audio, sr, subtype="FLOAT")
 
 
-def run(input_path: str, outdir: str, engine: Engine) -> Dict[str, str]:
+def run(
+    input_path: str,
+    outdir: str,
+    engine: Engine,
+    polish_dialogue: bool = False,
+) -> Dict[str, str]:
     os.makedirs(outdir, exist_ok=True)
 
     load_cb = _make_progress("loading")
@@ -111,6 +116,41 @@ def run(input_path: str, outdir: str, engine: Engine) -> Dict[str, str]:
     sep_cb("separating", 0.0)
     stems = engine.separate(audio, sr, sep_cb)
     sep_cb("separating", 100.0)
+
+    # Optional dialogue-polish pass: clean residual music/effects bleed out of
+    # the voices. The removed bleed is folded into the effects stem, so the
+    # three stems still sum to the input sample-for-sample. Runs AFTER the
+    # engine's own mixture-consistency step.
+    if polish_dialogue:
+        from . import pipeline
+        from .polish import polish_dialogue as _polish
+
+        polish_cb = _make_progress("polishing")
+        polish_cb("polishing", 0.0)
+        stems = pipeline.apply_dialogue_polish(
+            stems,
+            sr,
+            lambda d, s: _polish(d, s, polish_cb),
+        )
+        # Verify the sum-exact guarantee survived the polish fold (same bar as
+        # pipeline.enforce_mixture_consistency: max|residual| < 1e-6).
+        mix = audio[:, None] if audio.ndim == 1 else audio
+        n = min(
+            mix.shape[0],
+            stems["dialogue"].shape[0],
+            stems["music"].shape[0],
+            stems["effects"].shape[0],
+        )
+        residual = mix[:n] - (
+            stems["dialogue"][:n] + stems["music"][:n] + stems["effects"][:n]
+        )
+        max_resid = float(np.max(np.abs(residual))) if n else 0.0
+        if max_resid >= 1e-6:
+            raise ValueError(
+                f"dialogue polish broke mixture consistency: "
+                f"max|residual|={max_resid:.3e} (expected < 1e-6)"
+            )
+        polish_cb("polishing", 100.0)
 
     write_cb = _make_progress("writing")
     outputs: Dict[str, str] = {}
@@ -207,6 +247,13 @@ def main(argv=None) -> int:
         default=os.environ.get("STEMSTUDIO_CACHE_DIR"),
         help="directory to cache downloaded model weights",
     )
+    parser.add_argument(
+        "--polish-dialogue",
+        action="store_true",
+        help="optional post-separation pass: reduce residual music/effects "
+        "bleed in the dialogue stem (the removed bleed is folded into effects, "
+        "so the stems still sum to the input). Slower. Default: off.",
+    )
     args = parser.parse_args(argv)
 
     if args.probe:
@@ -231,7 +278,7 @@ def main(argv=None) -> int:
 
     try:
         engine: Engine = build_engine(args.engine, args.quality, args.cache_dir)
-        outputs = run(args.input, args.outdir, engine)
+        outputs = run(args.input, args.outdir, engine, polish_dialogue=args.polish_dialogue)
         emit({"event": "done", "outputs": outputs})
         return 0
     except Exception as exc:  # noqa: BLE001 — surface any failure as an event

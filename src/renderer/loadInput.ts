@@ -37,7 +37,8 @@ export async function startSeparation(): Promise<void> {
     inputPath: s.input.path,
     outputDir: s.outputDir,
     multitrackVideo: s.multitrackVideo && s.input.hasVideo,
-    quality: s.quality
+    quality: s.quality,
+    polishDialogue: s.polishDialogue
   })
 }
 

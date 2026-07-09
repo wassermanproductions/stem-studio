@@ -38,6 +38,7 @@ export const STAGE_ORDER: PipelineStage[] = [
   'setup',
   'loading',
   'separating',
+  'polishing',
   'writing',
   'remuxing'
 ]
@@ -47,6 +48,7 @@ export const STAGE_LABELS: Record<PipelineStage, string> = {
   setup: 'Setting up environment',
   loading: 'Preparing engine',
   separating: 'Separating stems',
+  polishing: 'Polishing dialogue',
   writing: 'Writing stems',
   remuxing: 'Building multitrack video'
 }
@@ -60,6 +62,7 @@ export function statusForStage(stage: PipelineStage): JobStatus {
       return 'setup'
     case 'loading':
     case 'separating':
+    case 'polishing':
       return 'separating'
     case 'writing':
     case 'remuxing':
@@ -97,6 +100,9 @@ interface StemStudioState {
   /** Selected quality tier: `fast` | `high` | `max`. Defaulted from the probed
    * device (cuda→max, mps→high, cpu→fast) and user-adjustable. */
   quality: QualityMode
+  /** Optional dialogue-polish pass: reduce residual music/effects bleed in the
+   * voices. Off by default; a session preference (preserved across reset). */
+  polishDialogue: boolean
   /** Device/engine probe result, once known. Null until probed. */
   probe: WorkerProbe | null
 
@@ -114,6 +120,7 @@ interface StemStudioState {
   setOutputDir(dir: string): void
   setMultitrackVideo(on: boolean): void
   setQuality(q: QualityMode): void
+  setPolishDialogue(on: boolean): void
   /** Store the probe result and default the quality tier from its device
    * (unless the user has already changed it this session). */
   applyProbe(probe: WorkerProbe): void
@@ -136,6 +143,7 @@ export const useStore = create<StemStudioState>((set, get) => ({
   outputDir: null,
   multitrackVideo: false,
   quality: 'fast',
+  polishDialogue: false,
   probe: null,
   // Tracks whether the user has manually overridden the quality tier, so a
   // late-arriving probe doesn't clobber an explicit choice.
@@ -168,6 +176,8 @@ export const useStore = create<StemStudioState>((set, get) => ({
     userChoseQuality = true
     set({ quality: q })
   },
+
+  setPolishDialogue: (on) => set({ polishDialogue: on }),
 
   applyProbe: (probe) =>
     set({

@@ -40,6 +40,18 @@ describe('workerArgs', () => {
     expect(args[args.indexOf('--engine') + 1]).toBe('mvsep')
     expect(args[args.indexOf('--quality') + 1]).toBe('max')
   })
+
+  it('adds --polish-dialogue only when requested', () => {
+    expect(
+      workerArgs({ inputWav: '/i.wav', outDir: '/o', polishDialogue: true })
+    ).toContain('--polish-dialogue')
+    expect(
+      workerArgs({ inputWav: '/i.wav', outDir: '/o', polishDialogue: false })
+    ).not.toContain('--polish-dialogue')
+    expect(workerArgs({ inputWav: '/i.wav', outDir: '/o' })).not.toContain(
+      '--polish-dialogue'
+    )
+  })
 })
 
 describe('workerProbeArgs', () => {

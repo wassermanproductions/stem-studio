@@ -22,6 +22,9 @@ export interface WorkerArgsOptions {
   quality?: QualityMode | string
   /** Model-weights cache dir (tiger only). Omitted if not provided. */
   cacheDir?: string
+  /** Optional post-separation pass to reduce music/effects bleed in dialogue.
+   * Adds `--polish-dialogue`. Off by default. */
+  polishDialogue?: boolean
 }
 
 /**
@@ -44,6 +47,7 @@ export function workerArgs(opts: WorkerArgsOptions): string[] {
     String(quality)
   ]
   if (opts.cacheDir) args.push('--cache-dir', opts.cacheDir)
+  if (opts.polishDialogue) args.push('--polish-dialogue')
   return args
 }
 

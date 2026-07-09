@@ -72,8 +72,9 @@ export interface ProbeResult {
   format: string
 }
 
-/** Worker progress stages (app: WorkerStage). */
-export type WorkerStage = 'loading' | 'separating' | 'writing'
+/** Worker progress stages (app: WorkerStage). `polishing` is emitted only when
+ * the optional dialogue-polish pass runs. */
+export type WorkerStage = 'loading' | 'separating' | 'polishing' | 'writing'
 
 /** Typed worker event parsed from line-JSON stdout (app: WorkerEvent). */
 export type WorkerEvent =
@@ -87,6 +88,7 @@ export type PipelineStage =
   | 'setup'
   | 'loading'
   | 'separating'
+  | 'polishing'
   | 'writing'
   | 'remuxing'
   | 'done'

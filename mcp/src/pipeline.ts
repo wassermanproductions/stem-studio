@@ -41,6 +41,8 @@ export interface SeparateParams {
   engine?: string
   /** Remux original video + stems into a multitrack .mov (video inputs only). */
   multitrackVideo?: boolean
+  /** Optional post-separation pass to reduce music/effects bleed in dialogue. */
+  polishDialogue?: boolean
 }
 
 export interface PipelineCallbacks {
@@ -104,7 +106,8 @@ export function startSeparation(
         outDir: workerOut,
         engine: params.engine ?? DEFAULT_ENGINE,
         quality: params.quality ?? DEFAULT_QUALITY,
-        cacheDir
+        cacheDir,
+        polishDialogue: params.polishDialogue
       })
       const py = workerPythonPath(env)
       const handle = runWorker(py, args, {

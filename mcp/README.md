@@ -111,7 +111,7 @@ Six tools. Every path is a **local file path** (never a URL or stream); every ou
 | Tool | Input | Does |
 |---|---|---|
 | `probe_media` | `path` | Returns `duration`, `sample_rate`, `channels`, `has_video`, `format`. Fast (<1s). Errors clearly if the file is missing / has no audio / ffprobe is absent. |
-| `separate_stems` | `input_path`, `output_dir?`, `quality?` (`fast`\|`high`\|`max`, default `fast`), `engine?` (`tiger`\|`mvsep`\|`stub`), `multitrack_video?`, `wait?` (default `true`) | Runs the full pipeline. Delivers `_DIALOGUE/_MUSIC/_SFX.wav` + `_MARRIED.wav` (and `_STEMS.mov` for video when `multitrack_video`). `wait:true` blocks + emits progress notifications; `wait:false` returns a `job_id`. |
+| `separate_stems` | `input_path`, `output_dir?`, `quality?` (`fast`\|`high`\|`max`, default `fast`), `engine?` (`tiger`\|`mvsep`\|`stub`), `multitrack_video?`, `polish_dialogue?` (default `false`), `wait?` (default `true`) | Runs the full pipeline. Delivers `_DIALOGUE/_MUSIC/_SFX.wav` + `_MARRIED.wav` (and `_STEMS.mov` for video when `multitrack_video`). `polish_dialogue` adds an optional pass that reduces music/effects bleed in the dialogue stem (the bleed is folded into effects, so the stems still sum exactly). `wait:true` blocks + emits progress notifications; `wait:false` returns a `job_id`. |
 | `check_job` | `job_id` | Status (`running`/`done`/`error`/`cancelled`), `stage`, `percent`, and on `done` the output paths. |
 | `cancel_job` | `job_id` | Kills the process tree and cleans temp. Returns the resulting status. |
 | `setup_status` | — | Readiness report: venv python present, `torch`/`numpy`/`soundfile` importable, compute device, model-cache presence. |

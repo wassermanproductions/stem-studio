@@ -129,7 +129,8 @@ export async function runJob(
       // is otherwise the app default separation engine.
       engine: DEFAULT_ENGINE,
       quality,
-      cacheDir
+      cacheDir,
+      polishDialogue: opts.polishDialogue
     })
     const workerOutputs = await runWorker(jobId, py, args, rec, cb)
     checkCancel()

@@ -52,6 +52,7 @@ describe('statusForStage', () => {
     expect(statusForStage('setup')).toBe('setup')
     expect(statusForStage('loading')).toBe('separating')
     expect(statusForStage('separating')).toBe('separating')
+    expect(statusForStage('polishing')).toBe('separating')
     expect(statusForStage('writing')).toBe('writing')
     expect(statusForStage('remuxing')).toBe('writing')
   })
@@ -149,6 +150,21 @@ describe('store state machine', () => {
     expect(useStore.getState().quality).toBe('high')
     st.reset()
     expect(useStore.getState().quality).toBe('high')
+  })
+
+  it('defaults polishDialogue off and lets the user toggle it', () => {
+    expect(useStore.getState().polishDialogue).toBe(false)
+    useStore.getState().setPolishDialogue(true)
+    expect(useStore.getState().polishDialogue).toBe(true)
+  })
+
+  it('preserves the polishDialogue preference across setInput and reset', () => {
+    const st = useStore.getState()
+    st.setPolishDialogue(true)
+    st.setInput(videoInput, '/out')
+    expect(useStore.getState().polishDialogue).toBe(true)
+    st.reset()
+    expect(useStore.getState().polishDialogue).toBe(true)
   })
 
   it('applyProbe defaults the quality tier from the device (cuda→max)', () => {

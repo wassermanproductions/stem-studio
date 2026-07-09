@@ -1,7 +1,7 @@
 {
   "name": "stem-studio",
   "productName": "Stem Studio",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Desktop tool that separates a married film soundtrack into Dialogue, Music, and SFX stems — WAV output plus optional multitrack video for NLE import.",
   "main": "out/main/index.js",
   "author": "Sam Wasserman",

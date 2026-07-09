@@ -87,6 +87,10 @@ Pick a quality tier in the UI (or with `--quality` on the CLI):
 
 The UI defaults the tier to the compute device it detects, and you can always change it.
 
+### Polish dialogue
+
+An optional toggle (off by default). When on, Stem Studio runs a post-separation pass over the dialogue stem to clean music and effects bleed out of the voices — best for dialogue-heavy footage; the pass itself takes only a moment. Whatever it removes is folded into the SFX stem, so the four delivered files still sum back to the original mix sample-for-sample.
+
 ## Dev setup
 
 ```bash
@@ -130,8 +134,11 @@ The worker CLI is:
 ```
 python -m stemstudio_worker.separate \
   --input <wav> --outdir <dir> \
-  [--engine tiger|mvsep|stub] [--quality fast|high|max] [--cache-dir <dir>]
+  [--engine tiger|mvsep|stub] [--quality fast|high|max] [--cache-dir <dir>] \
+  [--polish-dialogue]
 ```
+
+`--polish-dialogue` (off by default) runs an optional post-separation pass that reduces residual music/effects bleed in the dialogue stem; the removed bleed is folded into the effects stem so the three stems still sum to the input exactly.
 
 and `python -m stemstudio_worker.separate --probe` prints one JSON line describing the resolved compute device and exits.
 
@@ -161,7 +168,7 @@ class Engine(Protocol):
 **Stdout — line-delimited JSON:**
 
 ```jsonc
-{"event":"progress","stage":"loading|separating|writing","percent":0-100}
+{"event":"progress","stage":"loading|separating|polishing|writing","percent":0-100}
 {"event":"done","outputs":{"dialogue":"…","music":"…","effects":"…"}}
 {"event":"error","message":"…"}
 ```

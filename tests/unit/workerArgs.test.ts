@@ -45,6 +45,29 @@ describe('workerArgs', () => {
     expect(a).toEqual(expect.arrayContaining(['--engine', 'mvsep']))
     expect(a).toEqual(expect.arrayContaining(['--quality', 'max']))
   })
+
+  it('adds --polish-dialogue only when requested', () => {
+    const on = workerArgs({ inputWav: '/i.wav', outDir: '/o', polishDialogue: true })
+    expect(on).toContain('--polish-dialogue')
+
+    const off = workerArgs({ inputWav: '/i.wav', outDir: '/o', polishDialogue: false })
+    expect(off).not.toContain('--polish-dialogue')
+
+    const absent = workerArgs({ inputWav: '/i.wav', outDir: '/o' })
+    expect(absent).not.toContain('--polish-dialogue')
+  })
+
+  it('is a bare flag with no value (comes after --cache-dir)', () => {
+    const a = workerArgs({
+      inputWav: '/i.wav',
+      outDir: '/o',
+      cacheDir: '/c',
+      polishDialogue: true
+    })
+    // --polish-dialogue is a store_true flag: nothing follows it.
+    expect(a[a.length - 1]).toBe('--polish-dialogue')
+    expect(a).toEqual(expect.arrayContaining(['--cache-dir', '/c']))
+  })
 })
 
 describe('probeWorkerArgs', () => {

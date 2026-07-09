@@ -15,11 +15,13 @@ export function ReadyView({ note }: { note?: string }): React.JSX.Element {
   const outputDir = useStore((s) => s.outputDir)
   const multitrackVideo = useStore((s) => s.multitrackVideo)
   const quality = useStore((s) => s.quality)
+  const polishDialogue = useStore((s) => s.polishDialogue)
   const probe = useStore((s) => s.probe)
   const status = useStore((s) => s.status)
   const setOutputDir = useStore((s) => s.setOutputDir)
   const setMultitrackVideo = useStore((s) => s.setMultitrackVideo)
   const setQuality = useStore((s) => s.setQuality)
+  const setPolishDialogue = useStore((s) => s.setPolishDialogue)
   const reset = useStore((s) => s.reset)
 
   if (!input) return <div className="center-stage" />
@@ -92,6 +94,21 @@ export function ReadyView({ note }: { note?: string }): React.JSX.Element {
             <span>Also export a multitrack video (.mov with 3 stem tracks) for your NLE</span>
           </label>
           {!input.hasVideo && <div className="hint">Audio input — no video to remux.</div>}
+        </div>
+
+        <div className="option-row">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={polishDialogue}
+              onChange={(e) => setPolishDialogue(e.target.checked)}
+            />
+            <span>Polish dialogue</span>
+          </label>
+          <div className="hint">
+            Cleans music &amp; effects bleed out of voices — best for
+            dialogue-heavy footage.
+          </div>
         </div>
 
         <div className="option-row">

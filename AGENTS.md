@@ -41,12 +41,15 @@ src/preload/    Typed IPC bridge exposed as window.stemstudio. Keep in sync with
 src/renderer/   React UI. store.ts (zustand job state machine), views/ (Drop/Ready/
                 Progress/Done/Error), loadInput.ts (renderer-side actions), styles.css.
 python/         stemstudio_worker/ package: separate.py (engine-agnostic CLI +
-                Engine protocol; --engine/--quality/--cache-dir/--probe flags),
+                Engine protocol; --engine/--quality/--cache-dir/--probe/
+                --polish-dialogue flags),
                 device.py (CUDA→MPS→CPU selection + STEMSTUDIO_DEVICE),
                 engine_tiger.py / engine_mvsep.py / engine_stub.py —
                 separation engine modules behind the engine-agnostic interface;
                 engine_max.py (dual-engine blend), pipeline.py (overlap-add
-                chunker, mixture consistency, TTA, blend_stems, si_sdr),
+                chunker, mixture consistency, apply_dialogue_polish, TTA,
+                blend_stems, si_sdr), polish.py (optional dialogue-polish pass:
+                noisereduce spectral gating, "polishing" stage),
                 vendor/tiger/ (vendored engine model code — see NOTICE).
                 requirements.txt, test_worker.py.
                 eval/ — make_eval_set.py + evaluate.py (evaluation harness).
@@ -68,6 +71,7 @@ mcp/            Standalone MCP stdio server (stem-studio-mcp) driving the
 ## Common tasks
 
 - **Plug in / swap a separation engine**: add `python/stemstudio_worker/engine_<name>.py` implementing `load` / `separate`, add its deps to `requirements.txt`, and register it in `separate.build_engine()`. Engine is selected via the worker's `--engine` flag, built into argv by the pure `src/shared/workerArgs.ts` (spawned in `job.ts`) and defaulted by `DEFAULT_ENGINE`. If it needs a different input rate, change `ENGINE_SAMPLE_RATE`.
-- **Run the eval harness**: `PYTHONPATH=python .venv/bin/python -m eval.make_eval_set` then `... -m eval.evaluate --engine tiger --quality fast`. Regression/sanity only, over a synthetic set.
+- **Run the eval harness**: `PYTHONPATH=python .venv/bin/python -m eval.make_eval_set` then `... -m eval.evaluate --engine tiger --quality fast`. Add `--polish-dialogue` to compare dialogue SI-SDR and the bleed energy moved to effects with the polish pass on. Regression/sanity only, over a synthetic set.
+- **Dialogue polish** (`--polish-dialogue`, off by default; UI toggle "Polish dialogue", MCP `polish_dialogue`): optional post-separation pass (`polish.py`, noisereduce spectral gating) that reduces music/effects bleed in the dialogue stem. `pipeline.apply_dialogue_polish` folds the removed bleed into the effects stem so the three stems still sum to the input sample-for-sample (worker asserts `max|residual| < 1e-6`). Emits a `polishing` progress stage. Flag built by `src/shared/workerArgs.ts`, state in `store.ts` (`polishDialogue`), passed through `job.ts`.
 - **Add an IPC method**: add the handler in `src/main/index.ts`, the typed method in `src/preload/index.ts` (`StemStudioAPI`), and call it from the renderer.
 - **Change the output naming / format**: `STEM_SUFFIX` + `convertStemArgs` (WAVs), `remuxMultitrackArgs` (the `.mov`).

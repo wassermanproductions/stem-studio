@@ -177,6 +177,33 @@ def enforce_mixture_consistency(
     return {"dialogue": d, "music": m, "effects": e}
 
 
+def apply_dialogue_polish(
+    stems: Dict[str, np.ndarray],
+    sr: int,
+    polish_fn: Callable[[np.ndarray, int], np.ndarray],
+) -> Dict[str, np.ndarray]:
+    """Run the optional dialogue-polish pass while preserving the sum-exact
+    "nothing lost" guarantee.
+
+    Given sum-consistent ``stems`` (dialogue + music + effects == mix), replace
+    the dialogue with its polished version and fold the removed bleed
+    (``dialogue_raw - dialogue_polished``) into the effects stem, so the three
+    stems still sum to the original mixture sample-for-sample. Call this *after*
+    :func:`enforce_mixture_consistency`. Returns a new dict; inputs are not
+    mutated. ``polish_fn(dialogue, sr)`` returns a same-length cleaned dialogue.
+    """
+    d = _as_2d(stems["dialogue"]).astype(np.float32)
+    m = _as_2d(stems["music"]).astype(np.float32)
+    e = _as_2d(stems["effects"]).astype(np.float32)
+
+    polished = _conform(polish_fn(d, sr), d.shape[0], d.shape[1])
+
+    # Everything the polish removed from dialogue moves to effects, so the sum
+    # dialogue + music + effects is unchanged (bleed is relocated, not lost).
+    bleed = d - polished
+    return {"dialogue": polished, "music": m, "effects": e + bleed}
+
+
 def blend_stems(
     a: Dict[str, np.ndarray],
     b: Dict[str, np.ndarray],

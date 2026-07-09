@@ -73,8 +73,9 @@ export interface ProbeResult {
   format: string
 }
 
-/** Progress events streamed from the Python worker (line-JSON on stdout). */
-export type WorkerStage = 'loading' | 'separating' | 'writing'
+/** Progress events streamed from the Python worker (line-JSON on stdout).
+ * `polishing` is emitted only when the optional dialogue-polish pass runs. */
+export type WorkerStage = 'loading' | 'separating' | 'polishing' | 'writing'
 
 export type WorkerEvent =
   | { event: 'progress'; stage: WorkerStage; percent: number }
@@ -87,6 +88,7 @@ export type PipelineStage =
   | 'setup'
   | 'loading'
   | 'separating'
+  | 'polishing'
   | 'writing'
   | 'remuxing'
 
@@ -134,6 +136,9 @@ export interface SeparateOptions {
   quality?: QualityMode
   /** Legacy toggle: slower TTA (`high`) when true. Superseded by `quality`. */
   highQuality?: boolean
+  /** Optional post-separation pass that reduces residual music/effects bleed in
+   * the dialogue stem. Slower. Off by default. */
+  polishDialogue?: boolean
 }
 
 /** Resolve the effective quality tier from a SeparateOptions. `quality` wins;

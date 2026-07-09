@@ -21,6 +21,7 @@ const STAGE_BASE: Record<PipelineStage, number> = {
   setup: 0,
   loading: 10,
   separating: 20,
+  polishing: 80,
   writing: 85,
   remuxing: 95,
   done: 100
@@ -29,7 +30,8 @@ const STAGE_SPAN: Record<PipelineStage, number> = {
   extracting: 10,
   setup: 10,
   loading: 10,
-  separating: 65,
+  separating: 60,
+  polishing: 5,
   writing: 10,
   remuxing: 5,
   done: 0
@@ -150,6 +152,14 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
           .boolean()
           .optional()
           .describe('Video inputs only: also produce a multitrack _STEMS.mov. Default false.'),
+        polish_dialogue: z
+          .boolean()
+          .optional()
+          .describe(
+            'Optional post-separation pass that reduces residual music/effects ' +
+              'bleed in the dialogue stem (the removed bleed is folded into effects, ' +
+              'so the stems still sum to the input). Slower. Default false.'
+          ),
         wait: z
           .boolean()
           .optional()
@@ -166,7 +176,8 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
           outputDir: input.output_dir,
           quality: input.quality,
           engine: input.engine,
-          multitrackVideo: input.multitrack_video
+          multitrackVideo: input.multitrack_video,
+          polishDialogue: input.polish_dialogue
         },
         {
           onStage: (stage, pct, detail) => {
