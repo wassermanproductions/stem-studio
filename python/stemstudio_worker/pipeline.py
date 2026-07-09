@@ -151,6 +151,27 @@ def enforce_mixture_consistency(
     return {"dialogue": d, "music": m, "effects": e}
 
 
+def blend_stems(
+    a: Dict[str, np.ndarray],
+    b: Dict[str, np.ndarray],
+    weights: Dict[str, float],
+) -> Dict[str, np.ndarray]:
+    """Per-stem weighted blend of two engines' outputs:
+    ``out[k] = weights[k] * a[k] + (1 - weights[k]) * b[k]``.
+
+    ``weights[k]`` is the weight on ``a`` for stem ``k`` (so 1.0 = all ``a``,
+    0.0 = all ``b``). Stems are aligned/truncated to a common length per key.
+    """
+    out: Dict[str, np.ndarray] = {}
+    for k in STEM_KEYS:
+        ya = _as_2d(a[k]).astype(np.float32)
+        yb = _as_2d(b[k]).astype(np.float32)
+        n = min(ya.shape[0], yb.shape[0])
+        w = float(weights.get(k, 0.5))
+        out[k] = (w * ya[:n] + (1.0 - w) * yb[:n]).astype(np.float32)
+    return out
+
+
 def time_shift(audio: np.ndarray, shift: int) -> np.ndarray:
     """Circularly shift ``audio`` by ``shift`` samples along time (wraparound)."""
     if shift == 0:

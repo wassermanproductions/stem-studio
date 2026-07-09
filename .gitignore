@@ -3,6 +3,8 @@ out/
 dist/
 release/
 *.log
+# Claude Code agent worktrees / session scratch.
+.claude/
 .DS_Store
 coverage/
 *.local

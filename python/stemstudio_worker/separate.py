@@ -127,8 +127,17 @@ def run(input_path: str, outdir: str, engine: Engine) -> Dict[str, str]:
 
 
 def build_engine(name: str, quality: str, cache_dir: str | None) -> Engine:
-    """Construct the requested engine. 'tiger' is the real ML model;
-    'stub' is the dependency-light band-splitter (no torch required)."""
+    """Construct the engine for ``name``/``quality``.
+
+    * ``quality == 'max'`` implies the cross-model blend (TIGER-high + MVSEP)
+      regardless of ``--engine``.
+    * ``tiger`` is the TIGER-DnR ML model; ``mvsep`` is MVSEP-CDX23 (HTDemucs);
+      ``stub`` is the dependency-light band-splitter (no torch required).
+    """
+    if quality == "max":
+        from .engine_max import EngineMax
+
+        return EngineMax(cache_dir=cache_dir)
     if name == "stub":
         from .engine_stub import EngineStub
 
@@ -137,32 +146,88 @@ def build_engine(name: str, quality: str, cache_dir: str | None) -> Engine:
         from .engine_tiger import EngineTiger
 
         return EngineTiger(cache_dir=cache_dir, quality=quality)
-    raise ValueError(f"unknown engine '{name}' (expected 'tiger' or 'stub')")
+    if name == "mvsep":
+        from .engine_mvsep import EngineMvsep
+
+        # A bare `--engine mvsep` runs a single checkpoint; the ensemble is
+        # reserved for `max` quality on CUDA (see EngineMax).
+        return EngineMvsep(cache_dir=cache_dir, ensemble=False)
+    raise ValueError(
+        f"unknown engine '{name}' (expected 'tiger', 'mvsep', or 'stub')"
+    )
+
+
+def probe() -> dict:
+    """Return one dict describing the worker's torch/device stack. Printed as a
+    single JSON line by ``--probe`` and used by the app to default the quality
+    tier (cuda→max, mps→high, cpu→fast)."""
+    from . import device
+
+    torch_version: str | None = None
+    try:
+        import torch
+
+        torch_version = str(torch.__version__)
+    except Exception:  # noqa: BLE001 — torch may be absent
+        torch_version = None
+
+    return {
+        "device": device.select_device_name(),
+        "cuda": device.cuda_available(),
+        "mps": device.mps_available(),
+        "torch": torch_version,
+        "engines": ["tiger", "mvsep", "stub"],
+    }
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="stemstudio_worker.separate")
-    parser.add_argument("--input", required=True, help="input WAV path")
-    parser.add_argument("--outdir", required=True, help="output directory")
+    parser.add_argument(
+        "--probe",
+        action="store_true",
+        help="print one JSON line describing the torch/device stack and exit",
+    )
+    parser.add_argument("--input", help="input WAV path")
+    parser.add_argument("--outdir", help="output directory")
     parser.add_argument(
         "--engine",
         default="tiger",
-        choices=["tiger", "stub"],
-        help="separation engine (default: tiger)",
+        choices=["tiger", "mvsep", "stub"],
+        help="separation engine (default: tiger; ignored when --quality max)",
     )
     parser.add_argument(
         "--quality",
         default="fast",
-        choices=["fast", "high"],
-        help="quality mode; 'high' runs a test-time-augmentation ensemble "
-        "(tiger only; ignored by stub). Default: fast",
+        choices=["fast", "high", "max"],
+        help="quality mode; 'high' runs a TTA ensemble (tiger), 'max' blends "
+        "TIGER-high with MVSEP-CDX23 (implies both engines). Default: fast",
     )
     parser.add_argument(
         "--cache-dir",
         default=os.environ.get("STEMSTUDIO_CACHE_DIR"),
-        help="directory to cache downloaded model weights (tiger only)",
+        help="directory to cache downloaded model weights",
     )
     args = parser.parse_args(argv)
+
+    if args.probe:
+        # Pure JSON line, no traceback noise: emit best-effort even on failure.
+        try:
+            emit(probe())
+        except Exception as exc:  # noqa: BLE001
+            emit(
+                {
+                    "device": "cpu",
+                    "cuda": False,
+                    "mps": False,
+                    "torch": None,
+                    "engines": ["tiger", "mvsep", "stub"],
+                    "error": str(exc),
+                }
+            )
+        return 0
+
+    if not args.input or not args.outdir:
+        parser.error("--input and --outdir are required unless --probe is given")
 
     try:
         engine: Engine = build_engine(args.engine, args.quality, args.cache_dir)

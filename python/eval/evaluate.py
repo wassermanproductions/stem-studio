@@ -48,6 +48,11 @@ def _load_triplet(d: str) -> tuple[Dict[str, np.ndarray], int]:
 
 
 def _make_engine(name: str, quality: str, cache_dir: str | None):
+    # `--quality max` runs the cross-model blend regardless of engine.
+    if quality == "max":
+        from stemstudio_worker.engine_max import EngineMax
+
+        return EngineMax(cache_dir=cache_dir)
     if name == "stub":
         from stemstudio_worker.engine_stub import EngineStub
 
@@ -56,6 +61,10 @@ def _make_engine(name: str, quality: str, cache_dir: str | None):
         from stemstudio_worker.engine_tiger import EngineTiger
 
         return EngineTiger(cache_dir=cache_dir, quality=quality)
+    if name == "mvsep":
+        from stemstudio_worker.engine_mvsep import EngineMvsep
+
+        return EngineMvsep(cache_dir=cache_dir, ensemble=False)
     raise ValueError(f"unknown engine '{name}'")
 
 
@@ -120,9 +129,12 @@ def evaluate(
 
 
 def print_report(res: Dict[str, object]) -> None:
-    label = f"{res['engine']}" + (
-        f"-{res['quality']}" if res["engine"] == "tiger" else ""
-    )
+    if res["quality"] == "max":
+        label = "max (tiger-high + mvsep blend)"
+    elif res["engine"] == "tiger":
+        label = f"tiger-{res['quality']}"
+    else:
+        label = str(res["engine"])
     print(f"\n### {label}\n")
     print("SI-SDR dB per stem, higher is better. Parenthesised = SI-SDRi over the mix baseline.\n")
     print("| clip | dialogue | music | effects | time |")
@@ -148,8 +160,12 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--data", default=os.path.join(os.path.dirname(__file__), "data")
     )
-    parser.add_argument("--engine", default="tiger", choices=["tiger", "stub"])
-    parser.add_argument("--quality", default="fast", choices=["fast", "high"])
+    parser.add_argument(
+        "--engine", default="tiger", choices=["tiger", "mvsep", "stub"]
+    )
+    parser.add_argument(
+        "--quality", default="fast", choices=["fast", "high", "max"]
+    )
     parser.add_argument("--cache-dir", default=os.environ.get("STEMSTUDIO_CACHE_DIR"))
     args = parser.parse_args(argv)
 

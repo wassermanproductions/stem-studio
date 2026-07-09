@@ -11,3 +11,8 @@ torchaudio>=2.2
 # Model download from the Hugging Face Hub + safetensors weight loading.
 huggingface_hub>=0.24
 safetensors>=0.4
+
+# MVSEP-CDX23 second engine (HTDemucs-based DnR). demucs is MIT-licensed and
+# pulls in librosa; the MVSEP checkpoints themselves download at runtime.
+demucs>=4.0
+librosa>=0.10

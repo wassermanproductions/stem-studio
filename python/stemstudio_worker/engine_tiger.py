@@ -29,6 +29,7 @@ from typing import Callable, Dict
 import numpy as np
 
 from . import pipeline
+from .device import select_device
 
 ProgressCb = Callable[[str, float], None]
 
@@ -39,20 +40,6 @@ MODEL_SAMPLE_RATE = 44_100
 def _log(msg: str) -> None:
     """Diagnostics go to stderr — stdout is the JSON protocol channel."""
     print(f"[engine_tiger] {msg}", file=sys.stderr, flush=True)
-
-
-def _select_device():
-    import torch
-
-    override = os.environ.get("STEMSTUDIO_DEVICE", "").strip().lower()
-    if override in ("cpu", "mps"):
-        if override == "mps" and not torch.backends.mps.is_available():
-            _log("STEMSTUDIO_DEVICE=mps but MPS unavailable; falling back to cpu")
-            return torch.device("cpu")
-        return torch.device(override)
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
 
 
 def _install_mps_compat() -> None:
@@ -92,7 +79,7 @@ class EngineTiger:
 
         self._torch = torch
         _install_mps_compat()
-        self._device = _select_device()
+        self._device = select_device()
         _log(f"device = {self._device}")
 
         progress_cb("loading", 5.0)
