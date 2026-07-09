@@ -4,7 +4,7 @@ Single source of truth for AI coding agents working on this repo. `CLAUDE.md` po
 
 ## What this app is
 
-Electron + TypeScript + React desktop tool that separates a **married** film soundtrack (video or audio with dialogue+music+SFX on one track) into three stems: **Dialogue**, **Music**, **SFX**. Output: three 48 kHz / 24-bit WAVs, plus an optional multitrack `.mov` for NLE import when the input is video. Separation runs in a Python worker; the app manages its own venv. The default engine is the real **TIGER-DnR** ML model; a torch-free **stub** band-splitter (`--engine stub`) is kept behind the same engine-agnostic interface for tests.
+Electron + TypeScript + React desktop tool that separates a **married** film soundtrack (video or audio with dialogue+music+SFX on one track) into three stems: **Dialogue**, **Music**, **SFX**. Output: three 48 kHz / 24-bit WAVs, a fourth `<name>_MARRIED.wav` (the conformed full mix, same spec), plus an optional multitrack `.mov` for NLE import when the input is video. Separation runs in a Python worker; the app manages its own venv. Engines: the default **TIGER-DnR** ML model, a second **MVSEP-CDX23** (HTDemucs via `demucs`), and a torch-free **stub** band-splitter (`--engine stub`) for tests — all behind the same engine-agnostic interface. Quality tiers: `fast`/`high` (TIGER) and `max` (blends TIGER-high + MVSEP). Device order everywhere is CUDA → MPS → CPU (`STEMSTUDIO_DEVICE` override); runs on macOS (MPS) and Linux arm64 + CUDA (DGX Spark).
 
 ## Commands
 
@@ -41,11 +41,14 @@ src/preload/    Typed IPC bridge exposed as window.stemstudio. Keep in sync with
 src/renderer/   React UI. store.ts (zustand job state machine), views/ (Drop/Ready/
                 Progress/Done/Error), loadInput.ts (renderer-side actions), styles.css.
 python/         stemstudio_worker/ package: separate.py (engine-agnostic CLI +
-                Engine protocol; --engine/--quality/--cache-dir flags),
-                engine_tiger.py (TIGER-DnR ML engine), engine_stub.py (torch-free
-                band-split), pipeline.py (overlap-add chunker, mixture
-                consistency, TTA, SI-SDR), vendor/tiger/ (minimal vendored TIGER
-                model, MIT — see NOTICE). requirements.txt, test_worker.py.
+                Engine protocol; --engine/--quality/--cache-dir/--probe flags),
+                device.py (CUDA→MPS→CPU selection + STEMSTUDIO_DEVICE),
+                engine_tiger.py (TIGER-DnR), engine_mvsep.py (MVSEP-CDX23 via
+                demucs), engine_max.py (TIGER-high + MVSEP blend), engine_stub.py
+                (torch-free band-split), pipeline.py (overlap-add chunker,
+                mixture consistency, TTA, blend_stems, SI-SDR), vendor/tiger/
+                (minimal vendored TIGER model, MIT — see NOTICE).
+                requirements.txt, test_worker.py.
                 eval/ — make_eval_set.py + evaluate.py (SI-SDR harness).
 tests/unit/     Vitest.
 scripts/        make_test_tone.py — synthesize a 5s multi-band test WAV.

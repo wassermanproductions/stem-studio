@@ -24,6 +24,13 @@ mac:
 win:
   target: nsis
 linux:
-  target: AppImage
-  category: Audio
+  # Built for the NVIDIA DGX Spark (DGX OS / Ubuntu, arm64). AppImage runs
+  # anywhere; the .deb installs on Debian/Ubuntu-based distros.
+  icon: build/icon.png
+  category: AudioVideo
+  target:
+    - target: AppImage
+      arch: [arm64]
+    - target: deb
+      arch: [arm64]
 npmRebuild: false
