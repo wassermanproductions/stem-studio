@@ -32,7 +32,7 @@ All optional — sensible fallbacks are built in.
 |---|---|---|
 | `STEMSTUDIO_ROOT` | Repo root that contains `python/` (the worker package). | This package's own repo (`mcp/..`). |
 | `STEMSTUDIO_PYTHON` | Path to the venv python that runs the worker. | `<repo>/.venv/bin/python`. |
-| `STEMSTUDIO_CACHE` | Model-weights cache dir (TIGER). | `~/.stemstudio/models`. |
+| `STEMSTUDIO_CACHE` | Model-weights cache dir. | `~/.stemstudio/models`. |
 
 The worker is always launched with `PYTHONPATH=<repo>/python`.
 
@@ -117,7 +117,7 @@ Six tools. Every path is a **local file path** (never a URL or stream); every ou
 | `setup_status` | — | Readiness report: venv python present, `torch`/`numpy`/`soundfile` importable, compute device, model-cache presence. |
 | `setup_environment` | `wait?` (default `true`) | Creates the venv (python3 ≥ 3.10) and pip-installs `python/requirements.txt`, streaming progress. Long-running; supports `wait:false` + `check_job`. |
 
-**Runtimes / timeouts.** `probe_media`, `check_job`, `cancel_job`, `setup_status` are sub-second. `separate_stems` runs in **minutes** — the `stub` engine is seconds; `tiger` on Apple-silicon MPS is roughly real-time-ish and much slower on CPU; `quality` `high`/`max` multiply that. `setup_environment` is **several minutes** on first run (PyTorch is a large download). For the long tools, either give the `wait:true` call a generous client timeout, or use `wait:false` and poll `check_job`.
+**Runtimes / timeouts.** `probe_media`, `check_job`, `cancel_job`, `setup_status` are sub-second. `separate_stems` runs in **minutes** — the `stub` engine is seconds; a neural engine on Apple-silicon MPS is roughly real-time-ish and much slower on CPU; `quality` `high`/`max` multiply that. `setup_environment` is **several minutes** on first run (PyTorch is a large download). For the long tools, either give the `wait:true` call a generous client timeout, or use `wait:false` and poll `check_job`.
 
 > `quality:'max'` and `engine:'mvsep'` may not exist in every worker snapshot; the server passes the flags straight through and surfaces the worker's error cleanly rather than pre-validating.
 
@@ -166,7 +166,7 @@ cancel_job { "job_id": "…" }     // if you need to abort
 | `probe_media` errors "Could not run ffprobe" | ffmpeg isn't installed / on PATH. `brew install ffmpeg`. |
 | `setup_status` → `ready:false`, `pythonExists:false` | No venv at the resolved path. Run `setup_environment`, or set `STEMSTUDIO_PYTHON` to an existing venv python. |
 | `setup_status` → `depsImportable:false` | The venv is missing `torch`/`numpy`/`soundfile`. Run `setup_environment` to (re)install `python/requirements.txt`. |
-| `separate_stems` fails immediately with a worker error | The worker rejected the `engine`/`quality` (e.g. `mvsep`/`max` not in this build). Use `tiger`/`stub` and `fast`/`high`, or update the worker. |
+| `separate_stems` fails immediately with a worker error | The worker rejected the requested `engine`/`quality`. Use a supported engine and `fast`/`high`, or update the worker. |
 | Worker can't find its package | `STEMSTUDIO_ROOT` doesn't point at a repo containing `python/stemstudio_worker/`. Set it, or run the server from within the repo. |
 
 The server is local-only: it spawns local binaries and reads/writes local files. Nothing is exposed off-machine.

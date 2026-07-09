@@ -1,1 +1,1 @@
-"""Stem Studio separation evaluation harness (SI-SDR)."""
+"""Stem Studio evaluation harness for the separation engines."""

@@ -4,7 +4,7 @@ Single source of truth for AI coding agents working on this repo. `CLAUDE.md` po
 
 ## What this app is
 
-Electron + TypeScript + React desktop tool that separates a **married** film soundtrack (video or audio with dialogue+music+SFX on one track) into three stems: **Dialogue**, **Music**, **SFX**. Output: three 48 kHz / 24-bit WAVs, a fourth `<name>_MARRIED.wav` (the conformed full mix, same spec), plus an optional multitrack `.mov` for NLE import when the input is video. Separation runs in a Python worker; the app manages its own venv. Engines: the default **TIGER-DnR** ML model, a second **MVSEP-CDX23** (HTDemucs via `demucs`), and a torch-free **stub** band-splitter (`--engine stub`) for tests — all behind the same engine-agnostic interface. Quality tiers: `fast`/`high` (TIGER) and `max` (blends TIGER-high + MVSEP). Device order everywhere is CUDA → MPS → CPU (`STEMSTUDIO_DEVICE` override); runs on macOS (MPS) and Linux arm64 + CUDA (DGX Spark).
+Electron + TypeScript + React desktop tool that separates a **married** film soundtrack (video or audio with dialogue+music+SFX on one track) into three stems: **Dialogue**, **Music**, **SFX**. Output: three 48 kHz / 24-bit WAVs, a fourth `<name>_MARRIED.wav` (the conformed full mix, same spec), plus an optional multitrack `.mov` for NLE import when the input is video. Separation runs in a Python worker; the app manages its own venv. Engines: the default neural separation engine, a second neural engine, and a torch-free **stub** band-splitter (`--engine stub`) for tests — all behind the same engine-agnostic interface. Quality tiers: `fast`/`high` (single engine) and `max` (dual-engine blend). Device order everywhere is CUDA → MPS → CPU (`STEMSTUDIO_DEVICE` override); runs on macOS (MPS) and Linux arm64 + CUDA (DGX Spark).
 
 ## Commands
 
@@ -43,13 +43,13 @@ src/renderer/   React UI. store.ts (zustand job state machine), views/ (Drop/Rea
 python/         stemstudio_worker/ package: separate.py (engine-agnostic CLI +
                 Engine protocol; --engine/--quality/--cache-dir/--probe flags),
                 device.py (CUDA→MPS→CPU selection + STEMSTUDIO_DEVICE),
-                engine_tiger.py (TIGER-DnR), engine_mvsep.py (MVSEP-CDX23 via
-                demucs), engine_max.py (TIGER-high + MVSEP blend), engine_stub.py
-                (torch-free band-split), pipeline.py (overlap-add chunker,
-                mixture consistency, TTA, blend_stems, SI-SDR), vendor/tiger/
-                (minimal vendored TIGER model, MIT — see NOTICE).
+                engine_tiger.py / engine_mvsep.py / engine_stub.py —
+                separation engine modules behind the engine-agnostic interface;
+                engine_max.py (dual-engine blend), pipeline.py (overlap-add
+                chunker, mixture consistency, TTA, blend_stems, si_sdr),
+                vendor/tiger/ (vendored engine model code — see NOTICE).
                 requirements.txt, test_worker.py.
-                eval/ — make_eval_set.py + evaluate.py (SI-SDR harness).
+                eval/ — make_eval_set.py + evaluate.py (evaluation harness).
 tests/unit/     Vitest.
 scripts/        make_test_tone.py — synthesize a 5s multi-band test WAV.
 mcp/            Standalone MCP stdio server (stem-studio-mcp) driving the
@@ -68,6 +68,6 @@ mcp/            Standalone MCP stdio server (stem-studio-mcp) driving the
 ## Common tasks
 
 - **Plug in / swap a separation engine**: add `python/stemstudio_worker/engine_<name>.py` implementing `load` / `separate`, add its deps to `requirements.txt`, and register it in `separate.build_engine()`. Engine is selected via the worker's `--engine` flag, built into argv by the pure `src/shared/workerArgs.ts` (spawned in `job.ts`) and defaulted by `DEFAULT_ENGINE`. If it needs a different input rate, change `ENGINE_SAMPLE_RATE`.
-- **Run the eval harness**: `PYTHONPATH=python .venv/bin/python -m eval.make_eval_set` then `... -m eval.evaluate --engine tiger --quality fast` (SI-SDR table). See README "Evaluation".
+- **Run the eval harness**: `PYTHONPATH=python .venv/bin/python -m eval.make_eval_set` then `... -m eval.evaluate --engine tiger --quality fast`. Regression/sanity only, over a synthetic set.
 - **Add an IPC method**: add the handler in `src/main/index.ts`, the typed method in `src/preload/index.ts` (`StemStudioAPI`), and call it from the renderer.
 - **Change the output naming / format**: `STEM_SUFFIX` + `convertStemArgs` (WAVs), `remuxMultitrackArgs` (the `.mov`).

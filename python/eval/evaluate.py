@@ -48,7 +48,7 @@ def _load_triplet(d: str) -> tuple[Dict[str, np.ndarray], int]:
 
 
 def _make_engine(name: str, quality: str, cache_dir: str | None):
-    # `--quality max` runs the cross-model blend regardless of engine.
+    # `--quality max` runs the dual-engine blend regardless of engine.
     if quality == "max":
         from stemstudio_worker.engine_max import EngineMax
 
@@ -130,11 +130,9 @@ def evaluate(
 
 def print_report(res: Dict[str, object]) -> None:
     if res["quality"] == "max":
-        label = "max (tiger-high + mvsep blend)"
-    elif res["engine"] == "tiger":
-        label = f"tiger-{res['quality']}"
+        label = "max (dual-engine blend)"
     else:
-        label = str(res["engine"])
+        label = f"{res['engine']}-{res['quality']}"
     print(f"\n### {label}\n")
     print("SI-SDR dB per stem, higher is better. Parenthesised = SI-SDRi over the mix baseline.\n")
     print("| clip | dialogue | music | effects | time |")

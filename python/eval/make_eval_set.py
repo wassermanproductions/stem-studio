@@ -8,7 +8,7 @@ per-note envelopes (actually musical, not a bare sine), and effects are
 filtered noise bursts / impacts / whooshes.
 
 This material is SYNTHETIC. Scores on it are for regression/sanity only — real
-film mixes will score differently. See README "Evaluation".
+film mixes will score differently.
 
 Usage::
 
