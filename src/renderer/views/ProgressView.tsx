@@ -1,6 +1,7 @@
 import React from 'react'
 import { useStore, STAGE_ORDER, STAGE_LABELS, stageProgress } from '../store'
 import type { PipelineStage } from '@shared/types'
+import { Splitter } from './Splitter'
 
 export function ProgressView(): React.JSX.Element {
   const input = useStore((s) => s.input)
@@ -16,6 +17,7 @@ export function ProgressView(): React.JSX.Element {
 
   const overall = stage ? Math.round(stageProgress(stage, stagePercent, stages) * 100) : 0
   const currentIdx = stage ? stages.indexOf(stage) : -1
+  const separating = stage === 'separating' || stage === 'loading'
 
   const cancel = () => {
     if (currentJobId) void window.stemstudio.cancel(currentJobId)
@@ -29,6 +31,8 @@ export function ProgressView(): React.JSX.Element {
         <div className="progress-title">Separating “{input?.name}”</div>
         <div className="progress-pct">{overall}%</div>
       </div>
+
+      <Splitter active={separating} />
 
       <div className="progress-bar">
         <div className="progress-fill" style={{ width: `${overall}%` }} />
@@ -51,7 +55,9 @@ export function ProgressView(): React.JSX.Element {
 
       {stage === 'setup' && setupLog.length > 0 && (
         <div className="setup-log">
-          <div className="setup-log-title">First-run setup — installing Python environment</div>
+          <div className="setup-log-title">
+            First-run setup — preparing the local environment
+          </div>
           <pre>{setupLog.slice(-8).join('\n')}</pre>
         </div>
       )}

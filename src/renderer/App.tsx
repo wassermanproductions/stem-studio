@@ -6,9 +6,11 @@ import { ReadyView } from './views/ReadyView'
 import { ProgressView } from './views/ProgressView'
 import { DoneView } from './views/DoneView'
 import { ErrorView } from './views/ErrorView'
+import logo from './assets/logo.png'
 
 export function App(): React.JSX.Element {
   const status = useStore((s) => s.status)
+  const probe = useStore((s) => s.probe)
   const applyProgress = useStore((s) => s.applyProgress)
   const appendSetup = useStore((s) => s.appendSetup)
   const finishDone = useStore((s) => s.finishDone)
@@ -40,9 +42,18 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app">
-      <div className="titlebar">
-        <span className="app-name">STEM STUDIO</span>
-      </div>
+      <header className="titlebar">
+        <img className="titlebar-logo" src={logo} alt="" aria-hidden />
+        <span className="app-name">Stem Studio</span>
+        <div className="titlebar-spacer" />
+        {probe && (
+          <span className="titlebar-status" title="Compute device the engines will run on">
+            <span className="dot" />
+            {probe.device}
+          </span>
+        )}
+      </header>
+
       <main className="content">
         {status === 'idle' && <DropView />}
         {status === 'ready' && <ReadyView />}
@@ -51,6 +62,12 @@ export function App(): React.JSX.Element {
         {status === 'error' && <ErrorView />}
         {status === 'cancelled' && <ReadyView note="Separation cancelled." />}
       </main>
+
+      <footer className="footer">
+        <span>Stem Studio</span>
+        <span>·</span>
+        <strong>Sam Wasserman</strong>
+      </footer>
     </div>
   )
 }

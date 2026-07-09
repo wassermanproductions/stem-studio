@@ -125,8 +125,8 @@ export async function runJob(
     const args = workerArgs({
       inputWav,
       outDir: workerOut,
-      // `max` quality implies both engines inside the worker; `--engine` is
-      // otherwise the app default (TIGER-DnR).
+      // `max` quality implies both neural engines inside the worker; `--engine`
+      // is otherwise the app default separation engine.
       engine: DEFAULT_ENGINE,
       quality,
       cacheDir

@@ -44,8 +44,8 @@ export const STAGE_ORDER: PipelineStage[] = [
 
 export const STAGE_LABELS: Record<PipelineStage, string> = {
   extracting: 'Extracting audio',
-  setup: 'Setting up Python',
-  loading: 'Loading model',
+  setup: 'Setting up environment',
+  loading: 'Preparing engine',
   separating: 'Separating stems',
   writing: 'Writing stems',
   remuxing: 'Building multitrack video'

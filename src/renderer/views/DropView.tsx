@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { openViaDialog, loadFromPath } from '../loadInput'
+import logo from '../assets/logo.png'
 
 export function DropView(): React.JSX.Element {
   const [dragging, setDragging] = useState(false)
@@ -24,27 +25,40 @@ export function DropView(): React.JSX.Element {
 
   return (
     <div className="center-stage">
-      <div
-        className={`dropzone${dragging ? ' dragging' : ''}`}
-        onDragOver={(e) => {
-          e.preventDefault()
-          setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-      >
-        <div className="dropzone-icon" aria-hidden>
-          ♪
+      <div className="hero">
+        <img className="hero-logo" src={logo} alt="Stem Studio" />
+        <div className="hero-tagline">
+          Split any <span className="grad-text">married mix</span> into Dialogue, Music &amp; SFX
         </div>
-        <div className="dropzone-title">Drop a video or audio file</div>
-        <div className="dropzone-sub">
-          Separates a married soundtrack into Dialogue, Music &amp; SFX stems
+
+        <div
+          className={`dropzone${dragging ? ' dragging' : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={onOpen}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              void onOpen()
+            }
+          }}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setDragging(true)
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+        >
+          <div className="dropzone-icon" aria-hidden>
+            ⇩
+          </div>
+          <div className="dropzone-title">Drop a video or audio file</div>
+          <div className="dropzone-sub">or click to browse — everything runs locally on your machine</div>
+          <div className="dropzone-formats">
+            MP4 · MOV · MKV · WEBM · WAV · MP3 · AAC · FLAC · M4A
+          </div>
+          {error && <div className="inline-error">{error}</div>}
         </div>
-        <button className="btn-primary" onClick={onOpen}>
-          Open File
-        </button>
-        <div className="dropzone-formats">MP4 · MOV · MKV · WEBM · WAV · MP3 · AAC · FLAC · M4A</div>
-        {error && <div className="inline-error">{error}</div>}
       </div>
     </div>
   )

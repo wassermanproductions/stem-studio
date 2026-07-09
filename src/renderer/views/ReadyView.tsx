@@ -1,21 +1,12 @@
 import React from 'react'
-import { useStore } from '../store'
-import { canSeparate } from '../store'
+import { useStore, canSeparate } from '../store'
 import { startSeparation, formatDuration } from '../loadInput'
-import { DEFAULT_ENGINE, ENGINE_LABEL, type QualityMode } from '@shared/types'
+import { defaultQualityForDevice, type QualityMode } from '@shared/types'
 
-const QUALITY_OPTIONS: { value: QualityMode; label: string; hint: string }[] = [
-  { value: 'fast', label: 'Fast', hint: 'Single pass. Quickest.' },
-  {
-    value: 'high',
-    label: 'High',
-    hint: 'TIGER with test-time augmentation — a few times slower for a small gain.'
-  },
-  {
-    value: 'max',
-    label: 'Max',
-    hint: 'Blends TIGER (high) with the MVSEP-CDX23 model. Best quality; slowest — recommended on CUDA.'
-  }
+const QUALITY_OPTIONS: { value: QualityMode; label: string; desc: string }[] = [
+  { value: 'fast', label: 'Fast', desc: 'Quick single pass.' },
+  { value: 'high', label: 'High', desc: 'Multi-pass, better separation.' },
+  { value: 'max', label: 'Max', desc: 'Dual-engine blend, best quality — slowest.' }
 ]
 
 /** File card + options + Separate button. Also used after cancel. */
@@ -39,6 +30,7 @@ export function ReadyView({ note }: { note?: string }): React.JSX.Element {
   }
 
   const ready = canSeparate(status, !!input, !!outputDir)
+  const recommended = probe ? defaultQualityForDevice(probe.device) : null
 
   return (
     <div className="stage">
@@ -58,7 +50,7 @@ export function ReadyView({ note }: { note?: string }): React.JSX.Element {
               {input.channels > 0 && (
                 <>
                   <span>·</span>
-                  <span>{input.channels === 1 ? 'mono' : `${input.channels}ch`}</span>
+                  <span>{input.channels === 1 ? 'mono' : `${input.channels} ch`}</span>
                 </>
               )}
               {input.sampleRate > 0 && (
@@ -67,6 +59,7 @@ export function ReadyView({ note }: { note?: string }): React.JSX.Element {
                   <span>{(input.sampleRate / 1000).toFixed(1)} kHz</span>
                 </>
               )}
+              {input.hasVideo && <span className="video-pill">HAS VIDEO</span>}
             </div>
           </div>
         </div>
@@ -96,44 +89,47 @@ export function ReadyView({ note }: { note?: string }): React.JSX.Element {
               disabled={!input.hasVideo}
               onChange={(e) => setMultitrackVideo(e.target.checked)}
             />
-            <span>Also export multitrack video (.mov with 3 stem tracks)</span>
+            <span>Also export a multitrack video (.mov with 3 stem tracks) for your NLE</span>
           </label>
           {!input.hasVideo && <div className="hint">Audio input — no video to remux.</div>}
         </div>
 
         <div className="option-row">
           <label className="option-label">Quality</label>
-          <div className="segmented" role="radiogroup" aria-label="Quality">
+          <div className="quality-grid" role="radiogroup" aria-label="Quality">
             {QUALITY_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
                 role="radio"
                 aria-checked={quality === opt.value}
-                className={`segment${quality === opt.value ? ' active' : ''}`}
+                className={`quality-seg${quality === opt.value ? ' active' : ''}`}
                 onClick={() => setQuality(opt.value)}
               >
-                {opt.label}
+                <span className="q-name">
+                  {opt.label}
+                  {recommended === opt.value && <span className="q-default-tag">Recommended</span>}
+                </span>
+                <span className="q-desc">{opt.desc}</span>
               </button>
             ))}
           </div>
-          <div className="hint">
-            {QUALITY_OPTIONS.find((o) => o.value === quality)?.hint}
-            {probe && (
-              <>
-                {' '}
-                Detected device: {probe.device.toUpperCase()}.
-              </>
-            )}
-          </div>
+          {probe && (
+            <div className="device-note">
+              Detected compute device: <code>{probe.device.toUpperCase()}</code>. The recommended
+              tier is picked for your hardware — you can change it any time.
+            </div>
+          )}
         </div>
       </section>
 
-      <button className="btn-primary btn-lg" disabled={!ready} onClick={() => void startSeparation()}>
+      <button
+        className="btn-primary btn-lg"
+        disabled={!ready}
+        onClick={() => void startSeparation()}
+      >
         Separate Stems
       </button>
-
-      <div className="engine-tag">Engine: {ENGINE_LABEL[DEFAULT_ENGINE]}</div>
     </div>
   )
 }

@@ -8,11 +8,11 @@ import { DEFAULT_ENGINE, type EngineName, type QualityMode } from './types'
 export interface WorkerArgsOptions {
   inputWav: string
   outDir: string
-  /** Engine to run. Defaults to the app default (TIGER-DnR). */
+  /** Separation engine module to run. Defaults to the app default. */
   engine?: EngineName
-  /** Quality mode; `high` runs the TTA ensemble. Defaults to `fast`. */
+  /** Quality mode; `high` runs a slower multi-pass ensemble. Defaults to `fast`. */
   quality?: QualityMode
-  /** Model-weights cache dir (tiger only). Omitted if not provided. */
+  /** Model-weights cache dir. Omitted if not provided. */
   cacheDir?: string
 }
 

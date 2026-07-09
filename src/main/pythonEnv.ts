@@ -48,7 +48,7 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
-/** Verify a venv python can import the worker's runtime deps (incl. the TIGER
+/** Verify a venv python can import the worker's runtime deps (the separation
  * engine stack: torch + huggingface_hub). */
 async function venvHasDeps(py: string): Promise<boolean> {
   return new Promise((res) => {
@@ -128,8 +128,9 @@ export async function setupUserVenv(onProgress: SetupProgress): Promise<string> 
   await runStreaming(py, ['-m', 'pip', 'install', '--upgrade', 'pip'], onProgress)
 
   onProgress(
-    'Installing libraries (numpy, scipy, soundfile, demucs, and PyTorch — a ' +
-      '~2 GB download; this can take a few minutes on first run)…'
+    'Installing libraries (numpy, scipy, soundfile, PyTorch, and the ' +
+      'separation engines — up to a ~2 GB download; this can take a few ' +
+      'minutes on first run)…'
   )
   const req = join(workerRoot(), 'requirements.txt')
   await runStreaming(py, ['-m', 'pip', 'install', '-r', req], onProgress)

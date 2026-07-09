@@ -15,23 +15,24 @@ export const ENGINE_SAMPLE_RATE = 44_100
 export const OUTPUT_SAMPLE_RATE = 48_000
 export const OUTPUT_BIT_DEPTH = 24
 
-/** Separation engine the worker runs. `tiger` is the real TIGER-DnR ML model;
- * `mvsep` is the MVSEP-CDX23 (HTDemucs-based) DnR model; `stub` is the
- * dependency-light band-splitter (no torch). */
+/** Separation engine module the worker runs. `tiger` and `mvsep` are the two
+ * neural separation engines; `stub` is a dependency-light band-splitter (no
+ * torch) used for tests and torch-free environments. The names are the worker's
+ * `--engine` flag values. */
 export type EngineName = 'tiger' | 'mvsep' | 'stub'
 export const DEFAULT_ENGINE: EngineName = 'tiger'
-/** Human label for the active engine, shown subtly in the UI. */
+/** Human label for the active engine, if surfaced in the UI. */
 export const ENGINE_LABEL: Record<EngineName, string> = {
-  tiger: 'TIGER-DnR',
-  mvsep: 'MVSEP-CDX23',
+  tiger: 'Neural separation engine',
+  mvsep: 'Neural separation engine',
   stub: 'Band-split (stub)'
 }
 
 /** Separation quality mode.
- * - `fast` — single pass (tiger).
- * - `high` — slower test-time-augmentation ensemble (tiger).
- * - `max`  — run BOTH tiger (high/TTA) AND mvsep, then blend per stem. Implies
- *   both engines regardless of `--engine`. */
+ * - `fast` — a single quick pass.
+ * - `high` — a slower multi-pass ensemble, better separation.
+ * - `max`  — a dual-engine blend for best quality; slowest. Implies both
+ *   neural engines regardless of `--engine`. */
 export type QualityMode = 'fast' | 'high' | 'max'
 
 export const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm'] as const
@@ -129,7 +130,7 @@ export interface SeparateOptions {
   /** Remux original video + stems into a multitrack .mov. Video inputs only. */
   multitrackVideo: boolean
   /** Quality tier: `fast` | `high` | `max`. Takes precedence over
-   * `highQuality` when set. `max` blends TIGER-high with MVSEP-CDX23. */
+   * `highQuality` when set. `max` blends the two neural engines. */
   quality?: QualityMode
   /** Legacy toggle: slower TTA (`high`) when true. Superseded by `quality`. */
   highQuality?: boolean

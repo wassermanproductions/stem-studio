@@ -36,13 +36,18 @@ protocol.registerSchemesAsPrivileged([
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 900,
-    height: 720,
-    minWidth: 640,
-    minHeight: 560,
+    width: 960,
+    height: 760,
+    minWidth: 720,
+    minHeight: 600,
     title: 'Stem Studio',
-    backgroundColor: '#111113',
+    backgroundColor: '#08090c',
     titleBarStyle: 'hiddenInset',
+    // Linux has no packaged app icon by default; point it at build/icon.png.
+    // (macOS/Windows use the icons wired in electron-builder.yml.)
+    ...(process.platform === 'linux'
+      ? { icon: join(__dirname, '../../build/icon.png') }
+      : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
