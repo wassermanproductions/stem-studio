@@ -180,6 +180,10 @@ Stem Studio runs on an **NVIDIA DGX Spark** (GB10 Grace Blackwell, DGX OS = Ubun
 
 Packaging Linux builds (AppImage + `.deb`, arm64) is configured in `electron-builder.yml` under `linux`.
 
+## Drive it from an AI agent
+
+An MCP stdio server lets Claude Code, Codex, or any MCP client run the pipeline headlessly (no Electron) — see [mcp/README.md](mcp/README.md).
+
 ## License
 
 Apache-2.0 © 2026 Sam Wasserman. See [LICENSE](LICENSE) and [NOTICE](NOTICE) — retain the NOTICE and credit "Sam Wasserman (wassermanproductions.com)" in derivative works.
