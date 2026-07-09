@@ -88,10 +88,13 @@ def _read_wav(path: str):
 def _write_wav(path: str, audio: np.ndarray, sr: int) -> None:
     import soundfile as sf
 
-    # soundfile writes [samples, channels]; ensure 2D.
+    # soundfile writes [samples, channels]; ensure 2D. We write 32-bit float so
+    # the mixture-consistency guarantee (stems sum exactly to the input) is
+    # preserved bit-for-bit through to the ffmpeg delivery step — 16-bit PCM
+    # rounding would break it. ffmpeg re-quantises to the 24-bit delivery WAVs.
     if audio.ndim == 1:
         audio = audio[:, None]
-    sf.write(path, audio, sr, subtype="PCM_16")
+    sf.write(path, audio, sr, subtype="FLOAT")
 
 
 def run(input_path: str, outdir: str, engine: Engine) -> Dict[str, str]:
@@ -123,16 +126,46 @@ def run(input_path: str, outdir: str, engine: Engine) -> Dict[str, str]:
     return outputs
 
 
+def build_engine(name: str, quality: str, cache_dir: str | None) -> Engine:
+    """Construct the requested engine. 'tiger' is the real ML model;
+    'stub' is the dependency-light band-splitter (no torch required)."""
+    if name == "stub":
+        from .engine_stub import EngineStub
+
+        return EngineStub()
+    if name == "tiger":
+        from .engine_tiger import EngineTiger
+
+        return EngineTiger(cache_dir=cache_dir, quality=quality)
+    raise ValueError(f"unknown engine '{name}' (expected 'tiger' or 'stub')")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="stemstudio_worker.separate")
     parser.add_argument("--input", required=True, help="input WAV path")
     parser.add_argument("--outdir", required=True, help="output directory")
+    parser.add_argument(
+        "--engine",
+        default="tiger",
+        choices=["tiger", "stub"],
+        help="separation engine (default: tiger)",
+    )
+    parser.add_argument(
+        "--quality",
+        default="fast",
+        choices=["fast", "high"],
+        help="quality mode; 'high' runs a test-time-augmentation ensemble "
+        "(tiger only; ignored by stub). Default: fast",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        default=os.environ.get("STEMSTUDIO_CACHE_DIR"),
+        help="directory to cache downloaded model weights (tiger only)",
+    )
     args = parser.parse_args(argv)
 
     try:
-        from .engine_stub import EngineStub
-
-        engine: Engine = EngineStub()
+        engine: Engine = build_engine(args.engine, args.quality, args.cache_dir)
         outputs = run(args.input, args.outdir, engine)
         emit({"event": "done", "outputs": outputs})
         return 0

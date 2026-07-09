@@ -39,9 +39,10 @@ def main() -> int:
         make_tone(tone)
 
         env = dict(os.environ, PYTHONPATH=HERE)
+        # Use the stub engine so this e2e test runs without torch installed.
         proc = subprocess.run(
             [sys.executable, "-m", "stemstudio_worker.separate",
-             "--input", tone, "--outdir", outdir],
+             "--input", tone, "--outdir", outdir, "--engine", "stub"],
             capture_output=True, text=True, env=env, cwd=HERE,
         )
         assert proc.returncode == 0, f"worker failed: {proc.stderr}\n{proc.stdout}"
@@ -49,15 +50,25 @@ def main() -> int:
         events = [json.loads(l) for l in proc.stdout.splitlines() if l.strip()]
         assert any(e.get("event") == "done" for e in events), "no done event"
 
+        stems = {}
         for name in ("dialogue.wav", "music.wav", "effects.wav"):
             p = os.path.join(outdir, name)
             assert os.path.exists(p), f"missing {name}"
-            audio, sr = sf.read(p, always_2d=True)
+            audio, sr = sf.read(p, always_2d=True, dtype="float32")
+            stems[name] = audio
             rms = float(np.sqrt(np.mean(audio**2)))
             assert rms > 1e-4, f"{name} is silent (rms={rms})"
             print(f"OK {name}: sr={sr} shape={audio.shape} rms={rms:.5f}")
 
-    print("PASS: worker produced 3 non-silent stems")
+        # Mixture-consistency: the three stems must sum back to the input mix.
+        mix, _ = sf.read(tone, always_2d=True, dtype="float32")
+        n = min(len(mix), *(len(s) for s in stems.values()))
+        residual = mix[:n] - sum(s[:n] for s in stems.values())
+        rmax = float(np.max(np.abs(residual)))
+        assert rmax < 1e-6, f"stems do not sum to input (max|residual|={rmax:.2e})"
+        print(f"OK mixture-consistency: max|residual|={rmax:.2e}")
+
+    print("PASS: worker produced 3 non-silent stems that sum to the input")
     return 0
 
 
