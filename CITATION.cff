@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use Stem Studio in your work, please cite it and credit Sam Wasserman (wassermanproductions.com), per the project's NOTICE and Section 4(d) of the Apache License 2.0."
+title: "Stem Studio"
+abstract: "A desktop app that separates a married film soundtrack into Dialogue, Music, and SFX stems, locally on your machine: drop in any video or audio file and get four sample-aligned WAVs (the original mix plus the three stems) ready for any NLE or DAW, with an optional multitrack video export and an MCP server for AI-agent control."
+type: software
+authors:
+  - family-names: "Wasserman"
+    given-names: "Sam"
+    website: "https://wassermanproductions.com"
+version: "1.0.0"
+date-released: "2026-07-09"
+license: "Apache-2.0"
+url: "https://github.com/wassermanproductions/stem-studio"
+repository-code: "https://github.com/wassermanproductions/stem-studio"
+keywords:
+  - stem-separation
+  - audio-source-separation
+  - dialogue-music-effects
+  - filmmaking
+  - post-production
+  - audio
