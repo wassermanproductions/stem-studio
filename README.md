@@ -18,7 +18,7 @@ Output is three broadcast-ready **WAV** files (48 kHz, 24-bit). When the input i
 
 Stem Studio is part of Sam Wasserman's AI-film tool suite (Blockout, Motion Previs Studio, Storyboard Reference Studio).
 
-> **Engine note.** This build ships with a **stub separation engine** — a frequency band-split that routes low frequencies to Music, the speech band (300–3400 Hz) to Dialogue, and the residual to SFX. It exists so the whole pipeline runs end-to-end today. A real ML separation model drops in behind the same interface (see [Engine contract](#engine-contract)) with no change to the app.
+> **Engine note.** This build separates with **TIGER-DnR**, a real ML source-separation model (see [Separation engine](#separation-engine)). A dependency-light band-split **stub** engine is still available (`--engine stub`) for tests and torch-free environments. Both sit behind the same [engine contract](#engine-contract), so either drops in with no change to the app.
 
 ## What it does
 
@@ -63,9 +63,40 @@ PYTHONPATH=python .venv/bin/python python/test_worker.py
 Run the worker CLI directly:
 
 ```bash
+# TIGER-DnR (default); weights cache in a repo-local dir for dev
+PYTHONPATH=python STEMSTUDIO_CACHE_DIR=cache/models .venv/bin/python \
+  -m stemstudio_worker.separate --input input.wav --outdir /tmp/stems \
+  --engine tiger --quality fast
+
+# torch-free band-split stub
 PYTHONPATH=python .venv/bin/python -m stemstudio_worker.separate \
-  --input input.wav --outdir /tmp/stems
+  --input input.wav --outdir /tmp/stems --engine stub
 ```
+
+## Separation engine
+
+Stem Studio separates with **TIGER-DnR** ([JusperLee/TIGER](https://github.com/JusperLee/TIGER), model code MIT; weights [JusperLee/TIGER-DnR](https://huggingface.co/JusperLee/TIGER-DnR), Apache-2.0, ~17 MB / 4.22 M params). A minimal subset of the model code is **vendored** into `python/stemstudio_worker/vendor/tiger/` (so setup does not depend on cloning a repo at runtime); the weights download from the Hugging Face Hub on first run into a cache dir (`userData/models` in the app), reported through the "Loading model" progress stage. See [NOTICE](NOTICE) for attribution.
+
+- **Device.** MPS on Apple silicon, else CPU. Override with `STEMSTUDIO_DEVICE=mps|cpu`. The model is float32 (MPS has no float64); one MPS-only op (`adaptive_avg_pool1d` with non-divisible sizes) is transparently routed to CPU. MPS is *strongly* preferred — CPU is ~100× slower.
+- **Quality modes** (`--quality fast|high`, UI toggle "High quality (slower)", default off). `fast` is a single pass. `high` is a **test-time-augmentation ensemble**: separate a few time-shifted copies, un-shift, and average. On the synthetic eval set `high` scores ≥ `fast` on every stem (overall +13.03 vs +12.57 dB SI-SDR) for ~3× the runtime.
+- **Chunked overlap-add.** Long audio is processed in bounded ~30 s blocks with a 1 s Hann-crossfaded overlap (`pipeline.chunked_overlap_add`), so peak memory is independent of input length and blocks join without seams. (The model also chunks internally in 12 s windows.)
+- **Mixture consistency ("nothing lost").** After separation the residual `mix − (dialogue + music + effects)` is folded back into the effects stem, so the three stems sum to the original mix **sample-for-sample** (verified `max|residual| < 1e-6`). The worker writes 32-bit float stems to preserve this bit-exactly through to the ffmpeg delivery step.
+
+### Evaluation
+
+`python/eval/` proves the engine works and lets you regression-test it:
+
+```bash
+# 1) synthesize 3 reference triplets (say-generated speech + synth music + SFX)
+PYTHONPATH=python .venv/bin/python -m eval.make_eval_set --outdir python/eval/data
+
+# 2) score an engine/quality on them (SI-SDR per stem + improvement over the mix)
+PYTHONPATH=python STEMSTUDIO_CACHE_DIR=cache/models \
+  .venv/bin/python -m eval.evaluate --data python/eval/data --engine tiger --quality fast
+PYTHONPATH=python .venv/bin/python -m eval.evaluate --data python/eval/data --engine stub
+```
+
+SI-SDR is implemented directly in numpy (`pipeline.si_sdr`). On the synthetic set, mean SI-SDR is **+12.57 dB** (tiger-fast) / **+13.03 dB** (tiger-high) / **−0.78 dB** (stub). This material is synthetic — scores are for regression/sanity, not absolute quality claims; real film mixes will differ.
 
 ## Engine contract
 
@@ -79,7 +110,7 @@ class Engine(Protocol):
         ...
 ```
 
-**CLI:** `python -m stemstudio_worker.separate --input <wav> --outdir <dir>` writes `dialogue.wav`, `music.wav`, `effects.wav` into `<dir>`.
+**CLI:** `python -m stemstudio_worker.separate --input <wav> --outdir <dir> [--engine tiger|stub] [--quality fast|high] [--cache-dir <dir>]` writes `dialogue.wav`, `music.wav`, `effects.wav` into `<dir>` (defaults: `--engine tiger --quality fast`).
 
 **Stdout — line-delimited JSON:**
 

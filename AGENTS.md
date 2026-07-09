@@ -4,7 +4,7 @@ Single source of truth for AI coding agents working on this repo. `CLAUDE.md` po
 
 ## What this app is
 
-Electron + TypeScript + React desktop tool that separates a **married** film soundtrack (video or audio with dialogue+music+SFX on one track) into three stems: **Dialogue**, **Music**, **SFX**. Output: three 48 kHz / 24-bit WAVs, plus an optional multitrack `.mov` for NLE import when the input is video. Separation runs in a Python worker; the app manages its own venv. This build ships a **stub band-split engine** behind an engine-agnostic interface — a real ML model drops in later unchanged.
+Electron + TypeScript + React desktop tool that separates a **married** film soundtrack (video or audio with dialogue+music+SFX on one track) into three stems: **Dialogue**, **Music**, **SFX**. Output: three 48 kHz / 24-bit WAVs, plus an optional multitrack `.mov` for NLE import when the input is video. Separation runs in a Python worker; the app manages its own venv. The default engine is the real **TIGER-DnR** ML model; a torch-free **stub** band-splitter (`--engine stub`) is kept behind the same engine-agnostic interface for tests.
 
 ## Commands
 
@@ -31,8 +31,9 @@ External tools: **ffmpeg/ffprobe** (resolved from `/opt/homebrew/bin` then PATH)
 
 ```
 src/shared/     DOM-free, Electron-free code shared everywhere (unit-tested):
-                types.ts (IPC contract + constants — ENGINE_SAMPLE_RATE lives here),
-                ffmpegArgs.ts (PURE argv builders), workerProtocol.ts (JSON-line parser).
+                types.ts (IPC contract + constants — ENGINE_SAMPLE_RATE,
+                DEFAULT_ENGINE, ENGINE_LABEL live here), ffmpegArgs.ts +
+                workerArgs.ts (PURE argv builders), workerProtocol.ts (JSON-line parser).
 src/main/       Electron main: index.ts (window, stem:// protocol, IPC, dialogs),
                 ffmpeg.ts (probe/run), pythonEnv.ts (venv detect/create/install),
                 job.ts (extract → setup → worker → convert → remux, + cancel).
@@ -40,8 +41,12 @@ src/preload/    Typed IPC bridge exposed as window.stemstudio. Keep in sync with
 src/renderer/   React UI. store.ts (zustand job state machine), views/ (Drop/Ready/
                 Progress/Done/Error), loadInput.ts (renderer-side actions), styles.css.
 python/         stemstudio_worker/ package: separate.py (engine-agnostic CLI +
-                Engine protocol), engine_stub.py (band-split placeholder).
-                requirements.txt, test_worker.py.
+                Engine protocol; --engine/--quality/--cache-dir flags),
+                engine_tiger.py (TIGER-DnR ML engine), engine_stub.py (torch-free
+                band-split), pipeline.py (overlap-add chunker, mixture
+                consistency, TTA, SI-SDR), vendor/tiger/ (minimal vendored TIGER
+                model, MIT — see NOTICE). requirements.txt, test_worker.py.
+                eval/ — make_eval_set.py + evaluate.py (SI-SDR harness).
 tests/unit/     Vitest.
 scripts/        make_test_tone.py — synthesize a 5s multi-band test WAV.
 ```
@@ -57,6 +62,7 @@ scripts/        make_test_tone.py — synthesize a 5s multi-band test WAV.
 
 ## Common tasks
 
-- **Plug in a real separation engine**: add `python/stemstudio_worker/engine_<name>.py` implementing `load` / `separate`, add its deps to `requirements.txt`, and construct it in `separate.main()`. If it needs a different input rate, change `ENGINE_SAMPLE_RATE`.
+- **Plug in / swap a separation engine**: add `python/stemstudio_worker/engine_<name>.py` implementing `load` / `separate`, add its deps to `requirements.txt`, and register it in `separate.build_engine()`. Engine is selected via the worker's `--engine` flag, built into argv by the pure `src/shared/workerArgs.ts` (spawned in `job.ts`) and defaulted by `DEFAULT_ENGINE`. If it needs a different input rate, change `ENGINE_SAMPLE_RATE`.
+- **Run the eval harness**: `PYTHONPATH=python .venv/bin/python -m eval.make_eval_set` then `... -m eval.evaluate --engine tiger --quality fast` (SI-SDR table). See README "Evaluation".
 - **Add an IPC method**: add the handler in `src/main/index.ts`, the typed method in `src/preload/index.ts` (`StemStudioAPI`), and call it from the renderer.
 - **Change the output naming / format**: `STEM_SUFFIX` + `convertStemArgs` (WAVs), `remuxMultitrackArgs` (the `.mov`).
