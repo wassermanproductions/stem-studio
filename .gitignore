@@ -9,3 +9,8 @@ coverage/
 .venv/
 __pycache__/
 *.pyc
+
+# Local model-weights cache (downloaded at runtime).
+cache/
+# Generated eval material.
+python/eval/data/
