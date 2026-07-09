@@ -4,6 +4,8 @@
 
 **Un-marry a soundtrack.** Drop in a video or audio file where dialogue, music, and effects are mixed on one track — get back three clean stems ready for your edit.
 
+<img src="docs/screenshots/stems.png" alt="Stem Studio — four sample-aligned waveform lanes: Married Mix, Dialogue, Music and SFX, with per-lane solo/mute and transport" width="820" />
+
 </div>
 
 ---
@@ -32,11 +34,24 @@ All four WAVs are format-identical and sample-aligned. Everything runs **locally
 
 ## Screenshots
 
-> _Screenshots go here._
->
-> <!-- ![Drop a file](docs/screenshots/drop.png) -->
-> <!-- ![Separating](docs/screenshots/progress.png) -->
-> <!-- ![Done — preview and reveal stems](docs/screenshots/done.png) -->
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/drop.png" alt="Drop a video or audio file to begin" width="100%" /></td>
+    <td width="50%"><img src="docs/screenshots/ready.png" alt="File loaded — output folder, multitrack export and quality tier" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Drop a video or audio file to begin.</em></td>
+    <td align="center"><em>Pick your output folder and quality tier.</em></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/separating.png" alt="Separating — the married mix fanning out into three streams" width="100%" /></td>
+    <td width="50%"><img src="docs/screenshots/stems.png" alt="Done — four sample-aligned waveform lanes with solo, mute and reveal" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Live progress as the mix is split.</em></td>
+    <td align="center"><em>Four sample-aligned stems — preview, solo, and reveal.</em></td>
+  </tr>
+</table>
 
 ## What it does
 
