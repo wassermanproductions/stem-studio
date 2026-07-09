@@ -18,6 +18,8 @@ A "married" mix is one where dialogue, music, and sound effects are baked onto a
 
 Output is three broadcast-ready **WAV** files (48 kHz, 24-bit), plus a **`<name>_MARRIED.wav`** — the full original mix conformed to the same spec so all four files are format-identical and sample-aligned. When the input is a video, Stem Studio can also remux the original picture with the three stems as separate, labelled audio tracks into a **`<name>_STEMS.mov`** you drop straight into any NLE.
 
+**Current version: 1.0.0**
+
 Stem Studio is part of Sam Wasserman's AI-film tool suite (Blockout, Motion Previs Studio, Storyboard Reference Studio).
 
 ## What you get
@@ -200,4 +202,6 @@ An MCP stdio server lets Claude Code, Codex, or any MCP client run the pipeline 
 
 ## License
 
-Apache-2.0 © 2026 Sam Wasserman. Created by Sam Wasserman (wassermanproductions.com). See [LICENSE](LICENSE) and [NOTICE](NOTICE) — retain the NOTICE and credit "Sam Wasserman (wassermanproductions.com)" in derivative works.
+Apache-2.0 © 2026 Sam Wasserman. See [LICENSE](LICENSE) and [NOTICE](NOTICE) — retain the NOTICE and credit "Sam Wasserman (wassermanproductions.com · wasserman.ai)" in derivative works.
+
+Created by **Sam Wasserman** — [wassermanproductions.com](https://wassermanproductions.com) · [wasserman.ai](https://wasserman.ai)

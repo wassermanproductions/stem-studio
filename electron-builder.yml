@@ -17,9 +17,12 @@ mac:
   icon: build/icon.icns
   target:
     - target: dmg
-      arch: [arm64, x64]
-  # Unsigned by default. For distribution beyond your own machines, set
-  # identity + notarize (Apple Developer ID) — see README "Sharing builds".
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  # Ad-hoc / unsigned: no Developer ID signing identity on this machine. For
+  # distribution beyond your own machines, set identity + notarize (Apple
+  # Developer ID) — see README "Sharing builds".
   identity: null
 win:
   target: nsis
