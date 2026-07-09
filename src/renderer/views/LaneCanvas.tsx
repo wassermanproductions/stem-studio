@@ -43,7 +43,13 @@ export function LaneCanvas({
       ctx.lineTo(cssW, mid)
       ctx.stroke()
 
-      ctx.fillStyle = color
+      // Canvas cannot resolve `var(--…)` tokens — resolve against the element,
+      // falling back to a visible neutral if the variable is missing.
+      const resolved = color.startsWith('var(')
+        ? getComputedStyle(canvas).getPropertyValue(color.slice(4, -1).trim()).trim() ||
+          'rgba(255,255,255,0.75)'
+        : color
+      ctx.fillStyle = resolved
       ctx.globalAlpha = 0.9
       for (let i = 0; i < n; i++) {
         const x = i * step
