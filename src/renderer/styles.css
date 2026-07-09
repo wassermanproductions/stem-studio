@@ -168,15 +168,98 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   padding: 8px;
   border-top: 1px solid var(--border);
   background: var(--bg-deep);
   font-size: 10px;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   color: var(--text-faint);
 }
-.footer strong { color: var(--text-dim); font-weight: 600; }
+.footer .credit strong { color: var(--text-dim); font-weight: 600; }
+.footer-sep { color: var(--text-faint); opacity: 0.6; }
+
+.ext-link {
+  color: var(--cyan);
+  text-decoration: none;
+  cursor: pointer;
+}
+.ext-link:hover { text-decoration: underline; }
+
+.footer-version {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.footer-version:hover { color: var(--text-dim); }
+
+/* --------------------------------- about -------------------------------- */
+
+.about-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 4, 7, 0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: rise 0.14s var(--ease);
+}
+.about-panel {
+  position: relative;
+  width: min(420px, 90vw);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 32px 28px 24px;
+  text-align: center;
+}
+.about-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.about-close:hover { color: var(--text); }
+.about-logo { width: 72px; height: 72px; object-fit: contain; margin-bottom: 10px; }
+.about-name { font-size: 20px; font-weight: 700; letter-spacing: 0.01em; }
+.about-version {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+.about-desc {
+  color: var(--text-dim);
+  font-size: 12.5px;
+  margin: 14px auto 18px;
+  max-width: 320px;
+}
+.about-credit {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+.about-credit strong { color: var(--text); font-weight: 600; }
+.about-license {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  line-height: 1.6;
+}
 
 /* ============================= DROP VIEW ================================= */
 

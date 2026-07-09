@@ -13,6 +13,7 @@ import type {
   PythonEnvStatus,
   WorkerProbe
 } from '../shared/types'
+import { version as APP_VERSION } from '../../package.json'
 
 type ProbeReply =
   | { ok: true; info: ProbeResult }
@@ -36,7 +37,11 @@ export interface StemStudioAPI {
   cancel(jobId: string): Promise<boolean>
   revealInFinder(path: string): Promise<boolean>
   openFolder(path: string): Promise<boolean>
+  /** Open an allowlisted https link in the system browser. */
+  openExternal(url: string): Promise<boolean>
   versions(): Promise<{ app: string; electron: string; node: string }>
+  /** The app version (single source of truth: package.json via app.getVersion()). */
+  appVersion: string
 
   /** Convert an absolute file path to a stem:// preview URL. */
   stemUrl(path: string): string
@@ -46,6 +51,8 @@ export interface StemStudioAPI {
   onDone(cb: (result: JobResult) => void): () => void
   onError(cb: (err: JobError) => void): () => void
   onCancelled(cb: () => void): () => void
+  /** Fired when File → Open File… is chosen from the application menu. */
+  onMenuOpenFile(cb: () => void): () => void
 }
 
 function on<T>(channel: string, cb: (arg: T) => void): () => void {
@@ -66,7 +73,9 @@ const api: StemStudioAPI = {
   cancel: (jobId) => ipcRenderer.invoke('cancel', jobId),
   revealInFinder: (path) => ipcRenderer.invoke('revealInFinder', path),
   openFolder: (path) => ipcRenderer.invoke('openFolder', path),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   versions: () => ipcRenderer.invoke('versions'),
+  appVersion: APP_VERSION,
   // Encode the absolute path into the URL path so the main-process handler can
   // decode it back. A fixed host keeps it a valid standard URL.
   stemUrl: (path) => `stem://local/${encodeURIComponent(path)}`,
@@ -74,7 +83,8 @@ const api: StemStudioAPI = {
   onSetup: (cb) => on('job:setup', cb),
   onDone: (cb) => on('job:done', cb),
   onError: (cb) => on('job:error', cb),
-  onCancelled: (cb) => on('job:cancelled', () => cb())
+  onCancelled: (cb) => on('job:cancelled', () => cb()),
+  onMenuOpenFile: (cb) => on('menu:openFile', () => cb())
 }
 
 contextBridge.exposeInMainWorld('stemstudio', api)

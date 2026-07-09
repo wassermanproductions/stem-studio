@@ -5,7 +5,8 @@
  * typed IPC surface in src/preload.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, shell, protocol, net } from 'electron'
+import { app, BrowserWindow, Menu, dialog, ipcMain, shell, protocol, net } from 'electron'
+import type { MenuItemConstructorOptions } from 'electron'
 import { join, dirname, extname } from 'path'
 import { pathToFileURL } from 'url'
 
@@ -22,6 +23,14 @@ import {
 import { version as APP_VERSION } from '../../package.json'
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL
+
+// App identity. Set the display name early so the macOS menu bar, About panel,
+// and dock read "Stem Studio" rather than "Electron". The userData path is
+// pinned to a stable "stem-studio" folder *before* the name change so the
+// managed Python venv and model cache stay at a fixed location regardless of
+// the display name (changing the name would otherwise move userData).
+app.setPath('userData', join(app.getPath('appData'), 'stem-studio'))
+app.setName('Stem Studio')
 
 let mainWindow: BrowserWindow | null = null
 
@@ -67,7 +76,108 @@ function createWindow(): void {
   })
 }
 
+// External links only open in the system browser if their host is on this
+// allowlist and they are https — the credit footer and Help menu route through
+// it via shell:openExternal. Mirrors the Blockout suite convention.
+const EXTERNAL_LINK_ALLOWLIST = new Set(['wassermanproductions.com', 'wasserman.ai', 'github.com'])
+
+async function openExternal(url: string): Promise<boolean> {
+  try {
+    const parsed = new URL(url)
+    const host = parsed.hostname.replace(/^www\./, '')
+    if (parsed.protocol !== 'https:' || !EXTERNAL_LINK_ALLOWLIST.has(host)) return false
+    await shell.openExternal(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const REPO_URL = 'https://github.com/wassermanproductions/stem-studio'
+
+/** Build the macOS application menu (app name, standard Edit/View roles, Help). */
+function buildAppMenu(): void {
+  const isMac = process.platform === 'darwin'
+
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? ([
+          {
+            label: app.getName(),
+            submenu: [
+              { role: 'about' },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' }
+            ]
+          }
+        ] as MenuItemConstructorOptions[])
+      : []),
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Open File…',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => send('menu:openFile')
+        },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    { role: 'window', submenu: [{ role: 'minimize' }, { role: 'zoom' }] },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Stem Studio on GitHub',
+          click: () => void openExternal(REPO_URL)
+        }
+      ]
+    }
+  ]
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 app.whenReady().then(() => {
+  // macOS "About Stem Studio" panel — identity, version, credit.
+  app.setAboutPanelOptions({
+    applicationName: 'Stem Studio',
+    applicationVersion: app.getVersion(),
+    version: '',
+    copyright: '© 2026 Sam Wasserman',
+    credits: 'Created by Sam Wasserman — wassermanproductions.com · wasserman.ai'
+  })
+
+  buildAppMenu()
+
   // `stem://host/<url-encoded-abs-path>` -> file on disk. We decode the path
   // from the URL pathname; the host segment is ignored.
   protocol.handle('stem', (request) => {
@@ -196,3 +306,7 @@ ipcMain.handle('versions', () => ({
   electron: process.versions.electron,
   node: process.versions.node
 }))
+
+// Open an allowlisted external link (credit footer, About panel) in the system
+// browser. Returns false for anything not https + on the allowlist.
+ipcMain.handle('shell:openExternal', (_e, url: string) => openExternal(url))

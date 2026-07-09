@@ -1,12 +1,15 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useStore } from './store'
-import { loadProbe } from './loadInput'
+import { loadProbe, openViaDialog } from './loadInput'
 import { DropView } from './views/DropView'
 import { ReadyView } from './views/ReadyView'
 import { ProgressView } from './views/ProgressView'
 import { DoneView } from './views/DoneView'
 import { ErrorView } from './views/ErrorView'
+import { CreditLine, AboutPanel } from './views/About'
 import logo from './assets/logo.png'
+
+const APP_VERSION = window.stemstudio.appVersion
 
 export function App(): React.JSX.Element {
   const status = useStore((s) => s.status)
@@ -29,10 +32,15 @@ export function App(): React.JSX.Element {
     return () => offs.forEach((off) => off())
   }, [applyProgress, appendSetup, finishDone, finishError, finishCancelled])
 
+  const [aboutOpen, setAboutOpen] = useState(false)
+
   // Probe the device once on startup to default the quality tier.
   useEffect(() => {
     void loadProbe()
   }, [])
+
+  // File → Open File… from the application menu triggers the open dialog.
+  useEffect(() => window.stemstudio.onMenuOpenFile(() => void openViaDialog()), [])
 
   const inProgress =
     status === 'extracting' ||
@@ -64,10 +72,19 @@ export function App(): React.JSX.Element {
       </main>
 
       <footer className="footer">
-        <span>Stem Studio</span>
-        <span>·</span>
-        <strong>Sam Wasserman</strong>
+        <CreditLine />
+        <span className="footer-sep">·</span>
+        <button
+          type="button"
+          className="footer-version"
+          onClick={() => setAboutOpen(true)}
+          title="About Stem Studio"
+        >
+          v{APP_VERSION}
+        </button>
       </footer>
+
+      {aboutOpen && <AboutPanel version={APP_VERSION} onClose={() => setAboutOpen(false)} />}
     </div>
   )
 }
