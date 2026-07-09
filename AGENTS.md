@@ -49,6 +49,8 @@ python/         stemstudio_worker/ package: separate.py (engine-agnostic CLI +
                 eval/ — make_eval_set.py + evaluate.py (SI-SDR harness).
 tests/unit/     Vitest.
 scripts/        make_test_tone.py — synthesize a 5s multi-band test WAV.
+mcp/            Standalone MCP stdio server (stem-studio-mcp) driving the
+                pipeline headlessly for AI agents; own package/tests. See mcp/README.md.
 ```
 
 ## Hard rules

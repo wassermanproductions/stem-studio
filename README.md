@@ -136,6 +136,10 @@ ffmpeg remux: -map 0:v + 3× -map N:a, -c:v copy -c:a pcm_s24le,
               track titles Dialogue/Music/SFX  →  <name>_STEMS.mov
 ```
 
+## Drive it from an AI agent
+
+An MCP stdio server lets Claude Code, Codex, or any MCP client run the pipeline headlessly (no Electron) — see [mcp/README.md](mcp/README.md).
+
 ## License
 
 Apache-2.0 © 2026 Sam Wasserman. See [LICENSE](LICENSE) and [NOTICE](NOTICE) — retain the NOTICE and credit "Sam Wasserman (wassermanproductions.com)" in derivative works.
