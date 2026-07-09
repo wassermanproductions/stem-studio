@@ -39,13 +39,37 @@ def _as_2d(x: np.ndarray) -> np.ndarray:
     return x[:, None] if x.ndim == 1 else x
 
 
+def _conform(y: np.ndarray, n: int, ch: int) -> np.ndarray:
+    """Conform a block result to exactly ``[n, ch]``.
+
+    Models occasionally return a block a hair short (or long) in time, or
+    collapsed to a single channel; the overlap-add crossfade needs both
+    operands the same shape. Truncate/zero-pad the time axis to ``n`` and
+    broadcast/truncate the channel axis to ``ch``.
+    """
+    y = _as_2d(y).astype(np.float32)
+    if y.shape[0] > n:
+        y = y[:n]
+    elif y.shape[0] < n:
+        y = np.concatenate([y, np.zeros((n - y.shape[0], y.shape[1]), np.float32)], axis=0)
+    if y.shape[1] == ch:
+        return y
+    if y.shape[1] == 1:
+        return np.repeat(y, ch, axis=1)
+    if y.shape[1] > ch:
+        return y[:, :ch]
+    return np.concatenate([y, np.repeat(y[:, -1:], ch - y.shape[1], axis=1)], axis=1)
+
+
 def _hann_ramps(overlap: int) -> tuple[np.ndarray, np.ndarray]:
     """Complementary fade-in / fade-out ramps of length ``overlap`` that sum to
     1 everywhere (a Hann window split at its midpoint)."""
     if overlap <= 0:
         return np.ones(0, np.float32), np.ones(0, np.float32)
-    # Hann over 2*overlap points; first half rises, second half falls.
-    w = np.hanning(2 * overlap + 1)[1:-1].astype(np.float32)  # length 2*overlap
+    # Hann over exactly 2*overlap points; the first half rises and the second
+    # half falls, and the two halves are complementary (w[i] + w[i+overlap] == 1)
+    # so a crossfade using them preserves unity gain across the seam.
+    w = np.hanning(2 * overlap).astype(np.float32)  # length 2*overlap
     fade_in = w[:overlap]
     fade_out = w[overlap:]
     return fade_in, fade_out
@@ -94,9 +118,11 @@ def chunked_overlap_add(
         res = block_fn(seg)
 
         for k in STEM_KEYS:
-            y = _as_2d(res[k]).astype(np.float32)
             seg_len = end - start
-            y = y[:seg_len]
+            # Conform the model's block output to exactly [seg_len, ch] so the
+            # crossfade operands always align (models can return a hair short or
+            # channel-collapsed).
+            y = _conform(res[k], seg_len, ch)
             dst = outputs[k]
 
             # The leading `overlap` samples of every block after the first are
