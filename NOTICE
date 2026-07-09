@@ -7,3 +7,21 @@ redistribute this software or derivative works, you must retain this
 NOTICE file and credit "Sam Wasserman (wassermanproductions.com)" in
 your documentation and any about/credits surface, per Section 4(d) of
 the Apache License 2.0.
+
+--------------------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------------------
+
+TIGER (model code)
+  A minimal subset of the TIGER source is vendored under
+  python/stemstudio_worker/vendor/tiger/ (the TIGERDNR model and the layers it
+  needs at inference time).
+  Source:  https://github.com/JusperLee/TIGER
+  Author:  Kai Li (李凯)
+  License: MIT (see python/stemstudio_worker/vendor/tiger/LICENSE)
+
+TIGER-DnR (model weights)
+  The pretrained TIGER-DnR checkpoint is downloaded at runtime from the Hugging
+  Face Hub (not distributed with this source).
+  Source:  https://huggingface.co/JusperLee/TIGER-DnR
+  License: Apache-2.0
