@@ -102,6 +102,7 @@ describe('store state machine', () => {
     const result: JobResult = {
       jobId: 'j1',
       stems: { dialogue: '/o/d.wav', music: '/o/m.wav', sfx: '/o/s.wav' },
+      marriedMix: '/o/CLIP_MARRIED.wav',
       outputDir: '/out'
     }
     st.finishDone(result)
@@ -135,18 +136,43 @@ describe('store state machine', () => {
     expect(log[log.length - 1]).toBe('line 249')
   })
 
-  it('defaults high quality off and toggles it', () => {
-    expect(useStore.getState().highQuality).toBe(false)
-    useStore.getState().setHighQuality(true)
-    expect(useStore.getState().highQuality).toBe(true)
+  it('defaults quality to fast and lets the user change it', () => {
+    expect(useStore.getState().quality).toBe('fast')
+    useStore.getState().setQuality('max')
+    expect(useStore.getState().quality).toBe('max')
   })
 
-  it('preserves the high-quality preference across setInput and reset', () => {
+  it('preserves the quality preference across setInput and reset', () => {
     const st = useStore.getState()
-    st.setHighQuality(true)
+    st.setQuality('high')
     st.setInput(videoInput, '/out')
-    expect(useStore.getState().highQuality).toBe(true)
+    expect(useStore.getState().quality).toBe('high')
     st.reset()
-    expect(useStore.getState().highQuality).toBe(true)
+    expect(useStore.getState().quality).toBe('high')
+  })
+
+  it('applyProbe defaults the quality tier from the device (cuda→max)', () => {
+    useStore.getState().applyProbe({
+      device: 'cuda',
+      cuda: true,
+      mps: false,
+      torch: '2.6.0',
+      engines: ['tiger', 'mvsep', 'stub']
+    })
+    expect(useStore.getState().quality).toBe('max')
+    expect(useStore.getState().probe?.device).toBe('cuda')
+  })
+
+  it("applyProbe does not override the user's explicit quality choice", () => {
+    const st = useStore.getState()
+    st.setQuality('fast')
+    st.applyProbe({
+      device: 'cuda',
+      cuda: true,
+      mps: false,
+      torch: '2.6.0',
+      engines: ['tiger', 'mvsep', 'stub']
+    })
+    expect(useStore.getState().quality).toBe('fast')
   })
 })

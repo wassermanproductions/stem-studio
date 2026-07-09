@@ -10,13 +10,14 @@ import { join, dirname, extname } from 'path'
 import { pathToFileURL } from 'url'
 
 import { probe, isSupportedInput } from './ffmpeg'
-import { runJob, cancelJob } from './job'
+import { runJob, cancelJob, probeWorker } from './job'
 import { findReadyPython } from './pythonEnv'
 import {
   AUDIO_EXTENSIONS,
   VIDEO_EXTENSIONS,
   type SeparateOptions,
-  type PythonEnvStatus
+  type PythonEnvStatus,
+  type WorkerProbe
 } from '../shared/types'
 import { version as APP_VERSION } from '../../package.json'
 
@@ -139,6 +140,13 @@ ipcMain.handle('defaultOutputFolder', (_e, inputPath: string) => {
 ipcMain.handle('pythonStatus', async (): Promise<PythonEnvStatus> => {
   const py = await findReadyPython()
   return py ? { ready: true, venvPath: py } : { ready: false }
+})
+
+// Device/engine probe — the renderer uses this to default the quality tier
+// (cuda→max, mps→high, cpu→fast). Non-throwing; returns a cpu fallback if the
+// worker isn't ready yet.
+ipcMain.handle('workerProbe', async (): Promise<WorkerProbe> => {
+  return probeWorker()
 })
 
 // Start a separation job. Progress/result/error are pushed over events keyed

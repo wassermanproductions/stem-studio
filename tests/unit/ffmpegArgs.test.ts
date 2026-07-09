@@ -3,6 +3,7 @@ import {
   probeArgs,
   extractAudioArgs,
   convertStemArgs,
+  marriedMixArgs,
   remuxMultitrackArgs
 } from '@shared/ffmpegArgs'
 import { ENGINE_SAMPLE_RATE, OUTPUT_SAMPLE_RATE } from '@shared/types'
@@ -37,6 +38,18 @@ describe('convertStemArgs', () => {
     expect(a).toEqual(expect.arrayContaining(['-ar', String(OUTPUT_SAMPLE_RATE)]))
     expect(a).toEqual(expect.arrayContaining(['-c:a', 'pcm_s24le']))
     expect(a[a.length - 1]).toBe('/out/CLIP_DIALOGUE.wav')
+  })
+})
+
+describe('marriedMixArgs', () => {
+  const a = marriedMixArgs('/j/input.wav', '/out/CLIP_MARRIED.wav')
+  it('conforms the mix to the same 48 kHz / 24-bit stereo delivery spec', () => {
+    expect(a).toEqual(expect.arrayContaining(['-ar', String(OUTPUT_SAMPLE_RATE)]))
+    expect(a).toEqual(expect.arrayContaining(['-ac', '2']))
+    expect(a).toEqual(expect.arrayContaining(['-c:a', 'pcm_s24le']))
+    expect(a[0]).toBe('-y')
+    expect(a).toEqual(expect.arrayContaining(['-i', '/j/input.wav']))
+    expect(a[a.length - 1]).toBe('/out/CLIP_MARRIED.wav')
   })
 })
 

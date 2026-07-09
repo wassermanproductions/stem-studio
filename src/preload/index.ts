@@ -10,7 +10,8 @@ import type {
   JobProgress,
   JobResult,
   JobError,
-  PythonEnvStatus
+  PythonEnvStatus,
+  WorkerProbe
 } from '../shared/types'
 
 type ProbeReply =
@@ -27,6 +28,8 @@ export interface StemStudioAPI {
   pickOutputFolder(defaultPath?: string): Promise<string | null>
   defaultOutputFolder(inputPath: string): Promise<string>
   pythonStatus(): Promise<PythonEnvStatus>
+  /** Probe the worker's torch/device stack (defaults the quality tier). */
+  workerProbe(): Promise<WorkerProbe>
   separate(
     opts: SeparateOptions
   ): Promise<{ ok: boolean; jobId?: string; error?: string; cancelled?: boolean }>
@@ -58,6 +61,7 @@ const api: StemStudioAPI = {
   pickOutputFolder: (defaultPath) => ipcRenderer.invoke('pickOutputFolder', defaultPath),
   defaultOutputFolder: (inputPath) => ipcRenderer.invoke('defaultOutputFolder', inputPath),
   pythonStatus: () => ipcRenderer.invoke('pythonStatus'),
+  workerProbe: () => ipcRenderer.invoke('workerProbe'),
   separate: (opts) => ipcRenderer.invoke('separate', opts),
   cancel: (jobId) => ipcRenderer.invoke('cancel', jobId),
   revealInFinder: (path) => ipcRenderer.invoke('revealInFinder', path),

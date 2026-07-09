@@ -38,3 +38,15 @@ export function workerArgs(opts: WorkerArgsOptions): string[] {
   if (opts.cacheDir) args.push('--cache-dir', opts.cacheDir)
   return args
 }
+
+/**
+ * Build the argv for the worker's one-shot device probe:
+ * `python -m stemstudio_worker.separate --probe [--cache-dir <dir>]`, which
+ * prints a single JSON line (a {@link WorkerProbe}) and exits. Used by the main
+ * process after setup to default the UI quality tier.
+ */
+export function probeWorkerArgs(cacheDir?: string): string[] {
+  const args = ['-m', 'stemstudio_worker.separate', '--probe']
+  if (cacheDir) args.push('--cache-dir', cacheDir)
+  return args
+}

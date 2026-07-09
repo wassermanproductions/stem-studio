@@ -63,6 +63,28 @@ export function convertStemArgs(inWavPath: string, outWavPath: string): string[]
 }
 
 /**
+ * ffmpeg args to conform the full original mix to the delivery spec: 48 kHz /
+ * 24-bit PCM stereo WAV, video dropped. Produces `<basename>_MARRIED.wav` — the
+ * fourth deliverable, format-identical to the three stems so all four WAVs are
+ * sample-aligned and share one spec. Built from the same extracted audio path
+ * as the stems (see job.ts) so it matches them exactly.
+ */
+export function marriedMixArgs(inWavPath: string, outWavPath: string): string[] {
+  return [
+    '-y',
+    '-i',
+    inWavPath,
+    '-ac',
+    '2',
+    '-ar',
+    String(OUTPUT_SAMPLE_RATE),
+    '-c:a',
+    'pcm_s24le',
+    outWavPath
+  ]
+}
+
+/**
  * ffmpeg args to remux the original video with the three delivered stems as
  * separate, labelled audio tracks into a .mov (video stream copied, audio
  * re-encoded to 24-bit PCM). `stems` must be in canonical STEMS order.

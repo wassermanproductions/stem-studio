@@ -16,18 +16,23 @@ export const OUTPUT_SAMPLE_RATE = 48_000
 export const OUTPUT_BIT_DEPTH = 24
 
 /** Separation engine the worker runs. `tiger` is the real TIGER-DnR ML model;
- * `stub` is the dependency-light band-splitter (no torch). */
-export type EngineName = 'tiger' | 'stub'
+ * `mvsep` is the MVSEP-CDX23 (HTDemucs-based) DnR model; `stub` is the
+ * dependency-light band-splitter (no torch). */
+export type EngineName = 'tiger' | 'mvsep' | 'stub'
 export const DEFAULT_ENGINE: EngineName = 'tiger'
 /** Human label for the active engine, shown subtly in the UI. */
 export const ENGINE_LABEL: Record<EngineName, string> = {
   tiger: 'TIGER-DnR',
+  mvsep: 'MVSEP-CDX23',
   stub: 'Band-split (stub)'
 }
 
-/** Separation quality mode. `high` runs a slower test-time-augmentation
- * ensemble; `fast` is a single pass. */
-export type QualityMode = 'fast' | 'high'
+/** Separation quality mode.
+ * - `fast` — single pass (tiger).
+ * - `high` — slower test-time-augmentation ensemble (tiger).
+ * - `max`  — run BOTH tiger (high/TTA) AND mvsep, then blend per stem. Implies
+ *   both engines regardless of `--engine`. */
+export type QualityMode = 'fast' | 'high' | 'max'
 
 export const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm'] as const
 export const AUDIO_EXTENSIONS = ['wav', 'mp3', 'aac', 'flac', 'm4a'] as const
@@ -48,6 +53,9 @@ export const STEM_SUFFIX: Record<StemKind, string> = {
   music: 'MUSIC',
   sfx: 'SFX'
 }
+
+/** Filename suffix for the conformed full-mix WAV, e.g. `<basename>_MARRIED.wav`. */
+export const MARRIED_SUFFIX = 'MARRIED'
 
 /** Result of probing an input file with ffprobe. */
 export interface ProbeResult {
@@ -96,6 +104,9 @@ export interface JobResult {
   jobId: string
   /** Absolute paths to the three exported stem WAVs. */
   stems: Record<StemKind, string>
+  /** Absolute path to the `<basename>_MARRIED.wav` — the full original mix
+   * conformed to the same delivery spec as the stems (48 kHz / 24-bit). */
+  marriedMix: string
   /** Absolute path to the multitrack .mov, if one was produced. */
   multitrackVideo?: string
   /** Folder the outputs were written into. */
@@ -117,8 +128,42 @@ export interface SeparateOptions {
   outputDir: string
   /** Remux original video + stems into a multitrack .mov. Video inputs only. */
   multitrackVideo: boolean
-  /** Slower, higher-quality separation (test-time augmentation). Default false. */
+  /** Quality tier: `fast` | `high` | `max`. Takes precedence over
+   * `highQuality` when set. `max` blends TIGER-high with MVSEP-CDX23. */
+  quality?: QualityMode
+  /** Legacy toggle: slower TTA (`high`) when true. Superseded by `quality`. */
   highQuality?: boolean
+}
+
+/** Resolve the effective quality tier from a SeparateOptions. `quality` wins;
+ * otherwise the legacy `highQuality` boolean maps to `high`/`fast`. */
+export function resolveQuality(opts: {
+  quality?: QualityMode
+  highQuality?: boolean
+}): QualityMode {
+  if (opts.quality) return opts.quality
+  return opts.highQuality ? 'high' : 'fast'
+}
+
+/** One-line result of `separate.py --probe`: what the worker's torch/device
+ * stack looks like. Used to default the quality selector. */
+export interface WorkerProbe {
+  /** The device the engines will run on: cuda > mps > cpu. */
+  device: 'cuda' | 'mps' | 'cpu'
+  cuda: boolean
+  mps: boolean
+  /** torch version string, or null if torch is unavailable. */
+  torch: string | null
+  /** Engines available in this worker build. */
+  engines: EngineName[]
+}
+
+/** Map a probed device to the quality tier we default the UI to:
+ * cuda → max, mps → high, cpu → fast. */
+export function defaultQualityForDevice(device: WorkerProbe['device']): QualityMode {
+  if (device === 'cuda') return 'max'
+  if (device === 'mps') return 'high'
+  return 'fast'
 }
 
 /** State of the Python environment, reported before/after setup. */

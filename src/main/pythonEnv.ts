@@ -128,16 +128,74 @@ export async function setupUserVenv(onProgress: SetupProgress): Promise<string> 
   await runStreaming(py, ['-m', 'pip', 'install', '--upgrade', 'pip'], onProgress)
 
   onProgress(
-    'Installing libraries (numpy, scipy, soundfile, and PyTorch — a ~2 GB ' +
-      'download; this can take a few minutes on first run)…'
+    'Installing libraries (numpy, scipy, soundfile, demucs, and PyTorch — a ' +
+      '~2 GB download; this can take a few minutes on first run)…'
   )
   const req = join(workerRoot(), 'requirements.txt')
   await runStreaming(py, ['-m', 'pip', 'install', '-r', req], onProgress)
+
+  // On Linux (e.g. an NVIDIA DGX Spark) the default torch wheel may be the
+  // CPU build. If CUDA hardware is present but torch can't see it, reinstall
+  // torch/torchaudio from the CUDA aarch64 index so the GPU is actually used.
+  if (process.platform === 'linux' && (await hasNvidiaGpu()) && !(await torchSeesCuda(py))) {
+    onProgress('CUDA GPU detected but PyTorch is CPU-only — reinstalling the CUDA build…')
+    await runStreaming(
+      py,
+      [
+        '-m',
+        'pip',
+        'install',
+        '--upgrade',
+        '--index-url',
+        CUDA_WHEEL_INDEX,
+        'torch',
+        'torchaudio'
+      ],
+      onProgress
+    )
+    if (!(await torchSeesCuda(py))) {
+      onProgress(
+        'Warning: PyTorch still reports no CUDA after the reinstall — separation ' +
+          'will run on CPU. Check your CUDA driver / toolkit.'
+      )
+    }
+  }
 
   if (!(await venvHasDeps(py))) {
     throw new Error('Python setup finished but required libraries are missing.')
   }
   return py
+}
+
+/**
+ * PyTorch CUDA wheel index for Linux aarch64. cu128 is the index that ships
+ * `manylinux_2_28_aarch64` wheels — the ones an NVIDIA DGX Spark (GB10 Grace
+ * Blackwell) needs (Blackwell requires CUDA 12.8+). Verified against
+ * download.pytorch.org/whl/cu128. Bump if PyTorch's recommended aarch64 CUDA
+ * index changes.
+ */
+const CUDA_WHEEL_INDEX = 'https://download.pytorch.org/whl/cu128'
+
+/** Best-effort check for an NVIDIA GPU: `nvidia-smi` exits 0. */
+function hasNvidiaGpu(): Promise<boolean> {
+  return new Promise((res) => {
+    const child = spawn('nvidia-smi', ['-L'], { stdio: 'ignore' })
+    child.on('error', () => res(false))
+    child.on('close', (code) => res(code === 0))
+  })
+}
+
+/** True if the venv's torch reports CUDA available. */
+function torchSeesCuda(py: string): Promise<boolean> {
+  return new Promise((res) => {
+    const child = spawn(
+      py,
+      ['-c', 'import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)'],
+      { stdio: 'ignore' }
+    )
+    child.on('error', () => res(false))
+    child.on('close', (code) => res(code === 0))
+  })
 }
 
 /** Spawn a command, forwarding each stdout/stderr line to onLine. */

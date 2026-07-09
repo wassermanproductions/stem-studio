@@ -14,16 +14,20 @@ import { randomUUID } from 'crypto'
 import {
   extractAudioArgs,
   convertStemArgs,
+  marriedMixArgs,
   remuxMultitrackArgs
 } from '../shared/ffmpegArgs'
-import { workerArgs } from '../shared/workerArgs'
+import { workerArgs, probeWorkerArgs } from '../shared/workerArgs'
 import {
   STEM_SUFFIX,
+  MARRIED_SUFFIX,
   DEFAULT_ENGINE,
+  resolveQuality,
   type StemKind,
   type SeparateOptions,
   type JobProgress,
-  type JobResult
+  type JobResult,
+  type WorkerProbe
 } from '../shared/types'
 import { ffmpegPath, runFfmpeg, probe } from './ffmpeg'
 import { findReadyPython, setupUserVenv, workerRoot } from './pythonEnv'
@@ -117,11 +121,14 @@ export async function runJob(
     // Model weights cache lives under userData/models (persists across jobs).
     const cacheDir = join(app.getPath('userData'), 'models')
     await mkdir(cacheDir, { recursive: true })
+    const quality = resolveQuality(opts)
     const args = workerArgs({
       inputWav,
       outDir: workerOut,
+      // `max` quality implies both engines inside the worker; `--engine` is
+      // otherwise the app default (TIGER-DnR).
       engine: DEFAULT_ENGINE,
-      quality: opts.highQuality ? 'high' : 'fast',
+      quality,
       cacheDir
     })
     const workerOutputs = await runWorker(jobId, py, args, rec, cb)
@@ -144,7 +151,15 @@ export async function runJob(
       checkCancel()
     }
 
-    // 5) Optional multitrack video remux (video inputs only).
+    // 5) Married-mix export: the full original mix conformed to the same
+    // delivery spec (48 kHz / 24-bit) so all four WAVs are format-identical and
+    // sample-aligned. Built from the same extracted audio the stems derive from.
+    const marriedMix = join(opts.outputDir, `${base}_${MARRIED_SUFFIX}.wav`)
+    await runFfmpeg(ffmpeg, marriedMixArgs(inputWav, marriedMix))
+    checkCancel()
+
+    // 6) Optional multitrack video remux (video inputs only). The .mov keeps
+    // the 3 stems + video; the married WAV is the 4th standalone file.
     let multitrackVideo: string | undefined
     if (opts.multitrackVideo && info.hasVideo) {
       cb.onProgress({ jobId, stage: 'remuxing', percent: -1 })
@@ -159,12 +174,66 @@ export async function runJob(
     await rm(jobDir, { recursive: true, force: true }).catch(() => {})
     active.delete(jobId)
 
-    return { jobId, stems, multitrackVideo, outputDir: opts.outputDir }
+    return { jobId, stems, marriedMix, multitrackVideo, outputDir: opts.outputDir }
   } catch (err) {
     await rm(jobDir, { recursive: true, force: true }).catch(() => {})
     active.delete(jobId)
     throw err
   }
+}
+
+/**
+ * Run the worker's one-shot device probe (`--probe`) and return the parsed
+ * {@link WorkerProbe}, or a cpu-fallback probe if the venv isn't ready or the
+ * probe can't be parsed. Non-throwing: the app should still work if this fails.
+ */
+export async function probeWorker(): Promise<WorkerProbe> {
+  const fallback: WorkerProbe = {
+    device: 'cpu',
+    cuda: false,
+    mps: false,
+    torch: null,
+    engines: ['tiger', 'mvsep', 'stub']
+  }
+  const py = await findReadyPython()
+  if (!py) return fallback
+
+  const cacheDir = join(app.getPath('userData'), 'models')
+  return new Promise<WorkerProbe>((resolve) => {
+    let stdout = ''
+    const child = spawn(py, probeWorkerArgs(cacheDir), {
+      cwd: workerRoot(),
+      env: { ...process.env, PYTHONPATH: workerRoot(), PYTHONUNBUFFERED: '1' },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    child.stdout.on('data', (b: Buffer) => (stdout += b.toString()))
+    child.on('error', () => resolve(fallback))
+    child.on('close', () => {
+      // Take the last non-blank line as the JSON probe result.
+      const line = stdout
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .pop()
+      if (!line) return resolve(fallback)
+      try {
+        const obj = JSON.parse(line) as Partial<WorkerProbe>
+        if (obj.device === 'cuda' || obj.device === 'mps' || obj.device === 'cpu') {
+          resolve({
+            device: obj.device,
+            cuda: !!obj.cuda,
+            mps: !!obj.mps,
+            torch: typeof obj.torch === 'string' ? obj.torch : null,
+            engines: Array.isArray(obj.engines) ? obj.engines : fallback.engines
+          })
+          return
+        }
+      } catch {
+        /* fall through */
+      }
+      resolve(fallback)
+    })
+  })
 }
 
 /** Spawn the Python worker and resolve with its `done` outputs map. */
