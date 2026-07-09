@@ -37,8 +37,19 @@ export async function startSeparation(): Promise<void> {
     inputPath: s.input.path,
     outputDir: s.outputDir,
     multitrackVideo: s.multitrackVideo && s.input.hasVideo,
-    highQuality: s.highQuality
+    quality: s.quality
   })
+}
+
+/** Probe the worker's device stack and store it (defaults the quality tier).
+ * Safe to call on startup; never throws. */
+export async function loadProbe(): Promise<void> {
+  try {
+    const probe = await window.stemstudio.workerProbe()
+    useStore.getState().applyProbe(probe)
+  } catch {
+    /* leave the default quality in place */
+  }
 }
 
 /** Human-readable duration mm:ss. */

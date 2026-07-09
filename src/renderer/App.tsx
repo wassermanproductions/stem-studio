@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
 import { useStore } from './store'
+import { loadProbe } from './loadInput'
 import { DropView } from './views/DropView'
 import { ReadyView } from './views/ReadyView'
 import { ProgressView } from './views/ProgressView'
@@ -25,6 +26,11 @@ export function App(): React.JSX.Element {
     ]
     return () => offs.forEach((off) => off())
   }, [applyProgress, appendSetup, finishDone, finishError, finishCancelled])
+
+  // Probe the device once on startup to default the quality tier.
+  useEffect(() => {
+    void loadProbe()
+  }, [])
 
   const inProgress =
     status === 'extracting' ||

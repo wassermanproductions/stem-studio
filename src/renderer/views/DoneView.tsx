@@ -60,6 +60,24 @@ export function DoneView(): React.JSX.Element {
           <StemRow key={kind} kind={kind} path={result.stems[kind]} />
         ))}
 
+        {result.marriedMix && (
+          <div className="stem-row married-row">
+            <div className="play-btn placeholder" aria-hidden>
+              ▤
+            </div>
+            <div className="stem-name">Married Mix</div>
+            <div className="stem-path" title={result.marriedMix}>
+              {result.marriedMix.split('/').pop()}
+            </div>
+            <button
+              className="btn-ghost"
+              onClick={() => window.stemstudio.revealInFinder(result.marriedMix)}
+            >
+              Reveal
+            </button>
+          </div>
+        )}
+
         {result.multitrackVideo && (
           <div className="stem-row multitrack">
             <div className="play-btn placeholder" aria-hidden>

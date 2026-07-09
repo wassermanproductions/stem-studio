@@ -10,12 +10,15 @@
  */
 
 import { create } from 'zustand'
-import type {
-  ProbeResult,
-  JobProgress,
-  JobResult,
-  JobError,
-  PipelineStage
+import {
+  defaultQualityForDevice,
+  type ProbeResult,
+  type JobProgress,
+  type JobResult,
+  type JobError,
+  type PipelineStage,
+  type QualityMode,
+  type WorkerProbe
 } from '@shared/types'
 
 export type JobStatus =
@@ -91,8 +94,11 @@ interface StemStudioState {
   input: ProbeResult | null
   outputDir: string | null
   multitrackVideo: boolean
-  /** Slower, higher-quality separation (test-time augmentation). Default off. */
-  highQuality: boolean
+  /** Selected quality tier: `fast` | `high` | `max`. Defaulted from the probed
+   * device (cuda→max, mps→high, cpu→fast) and user-adjustable. */
+  quality: QualityMode
+  /** Device/engine probe result, once known. Null until probed. */
+  probe: WorkerProbe | null
 
   stage: PipelineStage | null
   stagePercent: number
@@ -107,7 +113,10 @@ interface StemStudioState {
   setInput(info: ProbeResult, outputDir: string): void
   setOutputDir(dir: string): void
   setMultitrackVideo(on: boolean): void
-  setHighQuality(on: boolean): void
+  setQuality(q: QualityMode): void
+  /** Store the probe result and default the quality tier from its device
+   * (unless the user has already changed it this session). */
+  applyProbe(probe: WorkerProbe): void
   beginSeparate(): void
   applyProgress(p: JobProgress): void
   appendSetup(detail: string): void
@@ -117,12 +126,19 @@ interface StemStudioState {
   reset(): void
 }
 
+// Session flag: has the user explicitly chosen a quality tier? Once true, a
+// probe result won't override their choice. Not part of reactive state.
+let userChoseQuality = false
+
 export const useStore = create<StemStudioState>((set, get) => ({
   status: 'idle',
   input: null,
   outputDir: null,
   multitrackVideo: false,
-  highQuality: false,
+  quality: 'fast',
+  probe: null,
+  // Tracks whether the user has manually overridden the quality tier, so a
+  // late-arriving probe doesn't clobber an explicit choice.
   stage: null,
   stagePercent: -1,
   setupLog: [],
@@ -148,7 +164,17 @@ export const useStore = create<StemStudioState>((set, get) => ({
 
   setMultitrackVideo: (on) => set({ multitrackVideo: on }),
 
-  setHighQuality: (on) => set({ highQuality: on }),
+  setQuality: (q) => {
+    userChoseQuality = true
+    set({ quality: q })
+  },
+
+  applyProbe: (probe) =>
+    set({
+      probe,
+      // Default the tier from the device unless the user already picked one.
+      quality: userChoseQuality ? get().quality : defaultQualityForDevice(probe.device)
+    }),
 
   beginSeparate: () =>
     set({
@@ -178,9 +204,11 @@ export const useStore = create<StemStudioState>((set, get) => ({
   finishCancelled: () =>
     set({ status: 'cancelled', stage: null, stagePercent: -1, currentJobId: null }),
 
-  reset: () =>
-    // Note: `highQuality` is a user preference and is intentionally preserved
-    // across reset (it is not cleared here).
+  reset: () => {
+    // A full reset also clears the "user picked a quality" latch so a fresh
+    // probe can re-default the tier. `quality`/`probe` values themselves are
+    // preserved (session preferences).
+    userChoseQuality = false
     set({
       status: 'idle',
       input: null,
@@ -193,4 +221,5 @@ export const useStore = create<StemStudioState>((set, get) => ({
       error: null,
       currentJobId: null
     })
+  }
 }))

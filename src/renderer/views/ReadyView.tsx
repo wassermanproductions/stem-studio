@@ -2,18 +2,33 @@ import React from 'react'
 import { useStore } from '../store'
 import { canSeparate } from '../store'
 import { startSeparation, formatDuration } from '../loadInput'
-import { DEFAULT_ENGINE, ENGINE_LABEL } from '@shared/types'
+import { DEFAULT_ENGINE, ENGINE_LABEL, type QualityMode } from '@shared/types'
+
+const QUALITY_OPTIONS: { value: QualityMode; label: string; hint: string }[] = [
+  { value: 'fast', label: 'Fast', hint: 'Single pass. Quickest.' },
+  {
+    value: 'high',
+    label: 'High',
+    hint: 'TIGER with test-time augmentation — a few times slower for a small gain.'
+  },
+  {
+    value: 'max',
+    label: 'Max',
+    hint: 'Blends TIGER (high) with the MVSEP-CDX23 model. Best quality; slowest — recommended on CUDA.'
+  }
+]
 
 /** File card + options + Separate button. Also used after cancel. */
 export function ReadyView({ note }: { note?: string }): React.JSX.Element {
   const input = useStore((s) => s.input)
   const outputDir = useStore((s) => s.outputDir)
   const multitrackVideo = useStore((s) => s.multitrackVideo)
-  const highQuality = useStore((s) => s.highQuality)
+  const quality = useStore((s) => s.quality)
+  const probe = useStore((s) => s.probe)
   const status = useStore((s) => s.status)
   const setOutputDir = useStore((s) => s.setOutputDir)
   const setMultitrackVideo = useStore((s) => s.setMultitrackVideo)
-  const setHighQuality = useStore((s) => s.setHighQuality)
+  const setQuality = useStore((s) => s.setQuality)
   const reset = useStore((s) => s.reset)
 
   if (!input) return <div className="center-stage" />
@@ -87,17 +102,29 @@ export function ReadyView({ note }: { note?: string }): React.JSX.Element {
         </div>
 
         <div className="option-row">
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={highQuality}
-              onChange={(e) => setHighQuality(e.target.checked)}
-            />
-            <span>High quality (slower)</span>
-          </label>
+          <label className="option-label">Quality</label>
+          <div className="segmented" role="radiogroup" aria-label="Quality">
+            {QUALITY_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={quality === opt.value}
+                className={`segment${quality === opt.value ? ' active' : ''}`}
+                onClick={() => setQuality(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
           <div className="hint">
-            Runs the separation several times on time-shifted copies and averages
-            them. A few times slower for a small quality gain.
+            {QUALITY_OPTIONS.find((o) => o.value === quality)?.hint}
+            {probe && (
+              <>
+                {' '}
+                Detected device: {probe.device.toUpperCase()}.
+              </>
+            )}
           </div>
         </div>
       </section>

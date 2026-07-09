@@ -432,3 +432,34 @@ button { font: inherit; cursor: pointer; }
   color: var(--text-faint);
   letter-spacing: 0.02em;
 }
+
+/* --------------------------- segmented control -------------------------- */
+/* Quality tier selector (fast / high / max). A design-pass agent may restyle. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.segment {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 14px;
+  border-radius: calc(var(--radius) - 3px);
+  cursor: pointer;
+}
+.segment:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.segment.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
