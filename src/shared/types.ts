@@ -15,6 +15,20 @@ export const ENGINE_SAMPLE_RATE = 44_100
 export const OUTPUT_SAMPLE_RATE = 48_000
 export const OUTPUT_BIT_DEPTH = 24
 
+/** Separation engine the worker runs. `tiger` is the real TIGER-DnR ML model;
+ * `stub` is the dependency-light band-splitter (no torch). */
+export type EngineName = 'tiger' | 'stub'
+export const DEFAULT_ENGINE: EngineName = 'tiger'
+/** Human label for the active engine, shown subtly in the UI. */
+export const ENGINE_LABEL: Record<EngineName, string> = {
+  tiger: 'TIGER-DnR',
+  stub: 'Band-split (stub)'
+}
+
+/** Separation quality mode. `high` runs a slower test-time-augmentation
+ * ensemble; `fast` is a single pass. */
+export type QualityMode = 'fast' | 'high'
+
 export const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm'] as const
 export const AUDIO_EXTENSIONS = ['wav', 'mp3', 'aac', 'flac', 'm4a'] as const
 
@@ -103,6 +117,8 @@ export interface SeparateOptions {
   outputDir: string
   /** Remux original video + stems into a multitrack .mov. Video inputs only. */
   multitrackVideo: boolean
+  /** Slower, higher-quality separation (test-time augmentation). Default false. */
+  highQuality?: boolean
 }
 
 /** State of the Python environment, reported before/after setup. */

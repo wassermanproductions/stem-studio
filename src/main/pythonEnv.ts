@@ -48,12 +48,15 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
-/** Verify a venv python can import the worker's runtime deps. */
+/** Verify a venv python can import the worker's runtime deps (incl. the TIGER
+ * engine stack: torch + huggingface_hub). */
 async function venvHasDeps(py: string): Promise<boolean> {
   return new Promise((res) => {
-    const child = spawn(py, ['-c', 'import numpy, scipy, soundfile'], {
-      stdio: 'ignore'
-    })
+    const child = spawn(
+      py,
+      ['-c', 'import numpy, scipy, soundfile, torch, huggingface_hub, safetensors'],
+      { stdio: 'ignore' }
+    )
     child.on('error', () => res(false))
     child.on('close', (code) => res(code === 0))
   })
@@ -124,7 +127,10 @@ export async function setupUserVenv(onProgress: SetupProgress): Promise<string> 
   onProgress('Upgrading pip…')
   await runStreaming(py, ['-m', 'pip', 'install', '--upgrade', 'pip'], onProgress)
 
-  onProgress('Installing audio libraries (numpy, scipy, soundfile)…')
+  onProgress(
+    'Installing libraries (numpy, scipy, soundfile, and PyTorch — a ~2 GB ' +
+      'download; this can take a few minutes on first run)…'
+  )
   const req = join(workerRoot(), 'requirements.txt')
   await runStreaming(py, ['-m', 'pip', 'install', '-r', req], onProgress)
 

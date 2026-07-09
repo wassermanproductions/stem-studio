@@ -16,8 +16,10 @@ import {
   convertStemArgs,
   remuxMultitrackArgs
 } from '../shared/ffmpegArgs'
+import { workerArgs } from '../shared/workerArgs'
 import {
   STEM_SUFFIX,
+  DEFAULT_ENGINE,
   type StemKind,
   type SeparateOptions,
   type JobProgress,
@@ -112,7 +114,17 @@ export async function runJob(
     // 3) Run the worker; stream its line-JSON progress.
     const workerOut = join(jobDir, 'stems')
     await mkdir(workerOut, { recursive: true })
-    const workerOutputs = await runWorker(jobId, py, inputWav, workerOut, rec, cb)
+    // Model weights cache lives under userData/models (persists across jobs).
+    const cacheDir = join(app.getPath('userData'), 'models')
+    await mkdir(cacheDir, { recursive: true })
+    const args = workerArgs({
+      inputWav,
+      outDir: workerOut,
+      engine: DEFAULT_ENGINE,
+      quality: opts.highQuality ? 'high' : 'fast',
+      cacheDir
+    })
+    const workerOutputs = await runWorker(jobId, py, args, rec, cb)
     checkCancel()
 
     // 4) Convert each stem to 48 kHz / 24-bit delivery WAV.
@@ -159,15 +171,14 @@ export async function runJob(
 function runWorker(
   jobId: string,
   py: string,
-  inputWav: string,
-  outDir: string,
+  args: string[],
   rec: { child?: ChildProcess; cancelled: boolean },
   cb: RunCallbacks
 ): Promise<Record<string, string>> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       py,
-      ['-m', 'stemstudio_worker.separate', '--input', inputWav, '--outdir', outDir],
+      args,
       {
         cwd: workerRoot(),
         // Put the worker package on the path and run it in its own process

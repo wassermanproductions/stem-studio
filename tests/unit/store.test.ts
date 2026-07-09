@@ -134,4 +134,19 @@ describe('store state machine', () => {
     expect(log.length).toBeLessThanOrEqual(201)
     expect(log[log.length - 1]).toBe('line 249')
   })
+
+  it('defaults high quality off and toggles it', () => {
+    expect(useStore.getState().highQuality).toBe(false)
+    useStore.getState().setHighQuality(true)
+    expect(useStore.getState().highQuality).toBe(true)
+  })
+
+  it('preserves the high-quality preference across setInput and reset', () => {
+    const st = useStore.getState()
+    st.setHighQuality(true)
+    st.setInput(videoInput, '/out')
+    expect(useStore.getState().highQuality).toBe(true)
+    st.reset()
+    expect(useStore.getState().highQuality).toBe(true)
+  })
 })

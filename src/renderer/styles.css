@@ -423,3 +423,12 @@ button { font: inherit; cursor: pointer; }
   border-radius: 6px;
   padding: 10px;
 }
+
+/* Subtle engine attribution under the Separate button. */
+.engine-tag {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}

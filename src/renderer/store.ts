@@ -91,6 +91,8 @@ interface StemStudioState {
   input: ProbeResult | null
   outputDir: string | null
   multitrackVideo: boolean
+  /** Slower, higher-quality separation (test-time augmentation). Default off. */
+  highQuality: boolean
 
   stage: PipelineStage | null
   stagePercent: number
@@ -105,6 +107,7 @@ interface StemStudioState {
   setInput(info: ProbeResult, outputDir: string): void
   setOutputDir(dir: string): void
   setMultitrackVideo(on: boolean): void
+  setHighQuality(on: boolean): void
   beginSeparate(): void
   applyProgress(p: JobProgress): void
   appendSetup(detail: string): void
@@ -119,6 +122,7 @@ export const useStore = create<StemStudioState>((set, get) => ({
   input: null,
   outputDir: null,
   multitrackVideo: false,
+  highQuality: false,
   stage: null,
   stagePercent: -1,
   setupLog: [],
@@ -143,6 +147,8 @@ export const useStore = create<StemStudioState>((set, get) => ({
   setOutputDir: (dir) => set({ outputDir: dir }),
 
   setMultitrackVideo: (on) => set({ multitrackVideo: on }),
+
+  setHighQuality: (on) => set({ highQuality: on }),
 
   beginSeparate: () =>
     set({
@@ -173,6 +179,8 @@ export const useStore = create<StemStudioState>((set, get) => ({
     set({ status: 'cancelled', stage: null, stagePercent: -1, currentJobId: null }),
 
   reset: () =>
+    // Note: `highQuality` is a user preference and is intentionally preserved
+    // across reset (it is not cleared here).
     set({
       status: 'idle',
       input: null,

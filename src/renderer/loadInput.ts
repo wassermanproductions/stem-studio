@@ -36,7 +36,8 @@ export async function startSeparation(): Promise<void> {
   await window.stemstudio.separate({
     inputPath: s.input.path,
     outputDir: s.outputDir,
-    multitrackVideo: s.multitrackVideo && s.input.hasVideo
+    multitrackVideo: s.multitrackVideo && s.input.hasVideo,
+    highQuality: s.highQuality
   })
 }
 

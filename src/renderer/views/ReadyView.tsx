@@ -2,15 +2,18 @@ import React from 'react'
 import { useStore } from '../store'
 import { canSeparate } from '../store'
 import { startSeparation, formatDuration } from '../loadInput'
+import { DEFAULT_ENGINE, ENGINE_LABEL } from '@shared/types'
 
 /** File card + options + Separate button. Also used after cancel. */
 export function ReadyView({ note }: { note?: string }): React.JSX.Element {
   const input = useStore((s) => s.input)
   const outputDir = useStore((s) => s.outputDir)
   const multitrackVideo = useStore((s) => s.multitrackVideo)
+  const highQuality = useStore((s) => s.highQuality)
   const status = useStore((s) => s.status)
   const setOutputDir = useStore((s) => s.setOutputDir)
   const setMultitrackVideo = useStore((s) => s.setMultitrackVideo)
+  const setHighQuality = useStore((s) => s.setHighQuality)
   const reset = useStore((s) => s.reset)
 
   if (!input) return <div className="center-stage" />
@@ -82,11 +85,28 @@ export function ReadyView({ note }: { note?: string }): React.JSX.Element {
           </label>
           {!input.hasVideo && <div className="hint">Audio input — no video to remux.</div>}
         </div>
+
+        <div className="option-row">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={highQuality}
+              onChange={(e) => setHighQuality(e.target.checked)}
+            />
+            <span>High quality (slower)</span>
+          </label>
+          <div className="hint">
+            Runs the separation several times on time-shifted copies and averages
+            them. A few times slower for a small quality gain.
+          </div>
+        </div>
       </section>
 
       <button className="btn-primary btn-lg" disabled={!ready} onClick={() => void startSeparation()}>
         Separate Stems
       </button>
+
+      <div className="engine-tag">Engine: {ENGINE_LABEL[DEFAULT_ENGINE]}</div>
     </div>
   )
 }
