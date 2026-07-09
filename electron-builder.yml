@@ -1,0 +1,29 @@
+appId: com.wassermanproductions.stemstudio
+productName: Stem Studio
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+# The Python worker ships as source; the app builds its own venv at runtime
+# under userData. Bundle the worker + requirements so first-run setup works.
+extraResources:
+  - from: python
+    to: python
+asarUnpack:
+  - '**/*.py'
+mac:
+  category: public.app-category.music
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  # Unsigned by default. For distribution beyond your own machines, set
+  # identity + notarize (Apple Developer ID) — see README "Sharing builds".
+  identity: null
+win:
+  target: nsis
+linux:
+  target: AppImage
+  category: Audio
+npmRebuild: false
