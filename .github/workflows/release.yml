@@ -43,12 +43,17 @@ jobs:
           node-version: 22
           cache: npm
 
-      # AppImage/deb packaging needs these on a bare runner.
+      # AppImage/deb packaging needs these on a bare runner. electron-builder's
+      # bundled fpm is an x86 binary (Exec format error on arm64), so the .deb
+      # is built with a system fpm instead (USE_SYSTEM_FPM below).
       - name: Install packaging prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends fakeroot rpm libfuse2t64 || \
-          sudo apt-get install -y --no-install-recommends fakeroot rpm libfuse2
+          sudo apt-get install -y --no-install-recommends fakeroot ruby ruby-dev build-essential
+          sudo apt-get install -y --no-install-recommends libfuse2t64 || \
+            sudo apt-get install -y --no-install-recommends libfuse2
+          sudo gem install fpm --no-document
+          fpm --version
 
       - run: npm ci
       - run: npm run typecheck
@@ -58,6 +63,8 @@ jobs:
         # The maintainer override keeps rebuilds of pre-1.1.1 tags working —
         # their checked-out electron-builder.yml predates the maintainer field
         # the .deb target requires.
+        env:
+          USE_SYSTEM_FPM: 'true'
         run: npx electron-builder --linux --arm64 --config electron-builder.yml -c.linux.maintainer="Sam Wasserman <sam@wassermanproductions.com>" --publish never
 
       - name: Attach to release
