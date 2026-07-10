@@ -1,0 +1,106 @@
+# Build and attach release binaries.
+#
+# Runs on every version tag (v*) and on demand via workflow_dispatch — the
+# dispatch form takes an existing tag name so binaries can be (re)built and
+# attached to an already-published release.
+#
+# Jobs:
+#   linux-arm64 — AppImage + .deb on GitHub's free arm64 runner
+#                 (electron-builder.yml already targets linux arm64; the
+#                 Python worker ships as source, so nothing else is
+#                 arch-specific). Requested in issue #1.
+#   macos-arm64 — the unsigned .dmg + .zip, same artifacts as the manual
+#                 releases to date (identity: null in electron-builder.yml).
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to build and attach binaries to (e.g. v1.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # AppImage/deb packaging needs these on a bare runner.
+      - name: Install packaging prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fakeroot rpm libfuse2t64 || \
+          sudo apt-get install -y --no-install-recommends fakeroot rpm libfuse2
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+      - name: Package (AppImage + deb, arm64)
+        run: npx electron-builder --linux --arm64 --config electron-builder.yml --publish never
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+            gh release create "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" \
+              --title "Stem Studio ${{ steps.tag.outputs.tag }}" --generate-notes
+          gh release upload "${{ steps.tag.outputs.tag }}" \
+            release/*.AppImage release/*.deb \
+            --repo "${{ github.repository }}" --clobber
+
+  macos-arm64:
+    runs-on: macos-14
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+      # Unsigned, matching electron-builder.yml (identity: null).
+      - name: Package (dmg + zip, arm64)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac --arm64 --config electron-builder.yml --publish never
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+            gh release create "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" \
+              --title "Stem Studio ${{ steps.tag.outputs.tag }}" --generate-notes
+          gh release upload "${{ steps.tag.outputs.tag }}" \
+            release/*.dmg release/*-mac.zip \
+            --repo "${{ github.repository }}" --clobber
