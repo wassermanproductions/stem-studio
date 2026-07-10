@@ -163,20 +163,30 @@ class EngineTiger:
         # here at that exact shape: warmup is a one-time cost paid during
         # `loading`, and compiled kernels are deterministic run-to-run once
         # warmed (bit-exact across separations of the same input).
+        #
+        # torch.compile can fail lazily (it raises at first *execution*, e.g.
+        # when a Triton toolchain dependency such as the Python dev headers is
+        # missing), so we warm it inside the try and, on any failure, restore the
+        # original eager sub-models. This keeps a host without a working compile
+        # toolchain fully functional — just at the slower eager speed — instead
+        # of leaving broken compiled wrappers in place.
         if self._device.type == "cuda":
+            originals = {n: getattr(model, n) for n in ("dialog", "effect", "music")}
             try:
                 for name in ("dialog", "effect", "music"):
                     setattr(model, name, torch.compile(getattr(model, name)))
-                self._compiled = True
                 warm_len = int(MODEL_SAMPLE_RATE * _MODEL_SESSION_SECONDS)
                 with torch.no_grad():
                     warm = torch.zeros(1, 2, warm_len, device=self._device)
                     for name in ("dialog", "effect", "music"):
                         getattr(model, name)(warm)
                 torch.cuda.synchronize()
+                self._compiled = True
                 _log("torch.compile warmup complete (cuda)")
             except Exception as exc:  # noqa: BLE001 — fall back to eager
                 _log(f"torch.compile unavailable, using eager: {exc}")
+                for name, sub in originals.items():
+                    setattr(model, name, sub)
                 self._compiled = False
         else:
             # Warm the MPS graph so the first real block isn't penalised.
