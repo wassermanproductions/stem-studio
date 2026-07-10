@@ -29,6 +29,7 @@ win:
 linux:
   # Built for the NVIDIA DGX Spark (DGX OS / Ubuntu, arm64). AppImage runs
   # anywhere; the .deb installs on Debian/Ubuntu-based distros.
+  maintainer: Sam Wasserman <sam@wassermanproductions.com>
   icon: build/icon.png
   category: AudioVideo
   target:

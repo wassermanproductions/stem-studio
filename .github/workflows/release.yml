@@ -55,7 +55,10 @@ jobs:
       - run: npm run build
 
       - name: Package (AppImage + deb, arm64)
-        run: npx electron-builder --linux --arm64 --config electron-builder.yml --publish never
+        # The maintainer override keeps rebuilds of pre-1.1.1 tags working —
+        # their checked-out electron-builder.yml predates the maintainer field
+        # the .deb target requires.
+        run: npx electron-builder --linux --arm64 --config electron-builder.yml -c.linux.maintainer="Sam Wasserman <sam@wassermanproductions.com>" --publish never
 
       - name: Attach to release
         env:
