@@ -201,6 +201,19 @@ Stem Studio runs on an **NVIDIA DGX Spark** (GB10 Grace Blackwell, DGX OS = Ubun
 3. **PyTorch + CUDA** — first-run setup installs the worker's libraries, then checks `torch.cuda.is_available()`. If an NVIDIA GPU is present (`nvidia-smi`) but the default wheel is CPU-only, it automatically reinstalls `torch`/`torchaudio` from the CUDA aarch64 index (`https://download.pytorch.org/whl/cu128`; cu128 = CUDA 12.8, required for Blackwell). This step is a large download — allow a few minutes.
 4. **Expected behavior** — the device probe reports `cuda`, so the UI defaults the quality selector to **Max**. The separation engines' model files download on first Max run. Everything runs locally on the GPU.
 
+### Performance
+
+TIGER-DnR is an unusually launch-bound model — a single forward issues on the order of 50k tiny per-band conv/attention kernels — so on the GB10 the wall time is dominated by CUDA kernel-launch overhead rather than raw math (the GPU already runs at ~95 % SM utilisation). To counter that, on CUDA the TIGER engine `torch.compile`s its three source sub-models (fusing those kernels) and runs the whole file in a single block (the model does its own internal overlap-add, so peak memory stays ~2.5 GB regardless of clip length). Output is unchanged aside from the tiny numerical difference of fused kernels, and separations remain deterministic once the graph is warm. The `torch.compile` graph is built during model load — expect a one-time ~30 s warmup on the first separation of a session (cached under a temp dir for subsequent runs in the same process).
+
+Measured on a DGX Spark (GB10, CUDA 13, torch 2.13) for a 100 s stereo clip, warm model cache:
+
+| Tier | Before | After | Approx. RTF (after) |
+| --- | --- | --- | --- |
+| `tiger --quality fast` | 2m37s | 1m35s | ~0.95× |
+| `--quality max` (TIGER-high TTA + MVSEP ensemble) | 7m50s | 3m36s | ~2.2× |
+
+RTF is wall-clock ÷ audio duration (lower is faster; below 1.0× is faster than realtime). The steady-state TIGER separation itself runs at ~0.6× realtime; the end-to-end wall additionally includes model load, the one-time compile warmup, and WAV I/O. The `max` tier is heavier because it also runs the 3-checkpoint MVSEP ensemble.
+
 Packaging Linux builds (AppImage + `.deb`, arm64) is configured in `electron-builder.yml` under `linux`.
 
 ## Drive it from an AI agent
