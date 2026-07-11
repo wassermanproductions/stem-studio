@@ -1,0 +1,42 @@
+name: macOS media tool assets
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos-ffmpeg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Confirm native arm64
+        run: test "$(node -p process.arch)" = "arm64"
+
+      - run: npm ci
+
+      - name: Install media build prerequisites
+        run: brew install pkg-config yasm nasm cmake meson ninja
+
+      - name: Build audited macOS arm64 FFmpeg pair
+        env:
+          # Older FFmpeg build dependencies declare cmake_minimum_required < 3.5,
+          # which CMake 4 rejects without this compatibility floor.
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+        run: npm run prepare:ffmpeg:mac
+
+      - name: Archive audited FFmpeg pair
+        run: tar -czf stem-ffmpeg-macos-arm64.tar.gz -C build/runtime macos-arm64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stem-ffmpeg-macos-arm64
+          if-no-files-found: error
+          path: stem-ffmpeg-macos-arm64.tar.gz
