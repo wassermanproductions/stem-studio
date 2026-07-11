@@ -107,8 +107,25 @@ try {
   const separation = result.tools.find((tool) => tool.name === 'separate_stems')
   if (!separation) throw new Error('Packaged MCP did not register separate_stems')
   const engine = separation.inputSchema?.properties?.engine
-  if (JSON.stringify(engine).includes('stub')) {
-    throw new Error('Public packaged MCP schema exposes the test-only stub')
+  const quality = separation.inputSchema?.properties?.quality
+  const engineSchema = JSON.stringify(engine)
+  const qualitySchema = JSON.stringify(quality)
+  if (process.platform === 'win32') {
+    if (engineSchema.includes('stub') || engineSchema.includes('mvsep')) {
+      throw new Error('Public Windows MCP schema exposes a disabled engine')
+    }
+    if (qualitySchema.includes('max')) {
+      throw new Error('Public Windows MCP schema exposes disabled Max quality')
+    }
+  } else {
+    for (const expected of ['stub', 'mvsep']) {
+      if (!engineSchema.includes(expected)) {
+        throw new Error(`Packaged ${process.platform} MCP lost legacy ${expected} support`)
+      }
+    }
+    if (!qualitySchema.includes('max')) {
+      throw new Error(`Packaged ${process.platform} MCP lost legacy Max quality`)
+    }
   }
   const statusResult = await request('tools/call', {
     name: 'setup_status',
