@@ -83,6 +83,8 @@ jobs:
       - run: npm ci --prefix mcp
       - run: npm run typecheck
       - run: npm test
+      - run: npm run typecheck --prefix mcp
+      - run: npm test --prefix mcp
       - run: npm run notices:check
       - run: npm run package:win
       - name: Verify packaged private runtime inputs
@@ -225,6 +227,8 @@ jobs:
       - run: npm ci --prefix mcp
       - run: npm run prepare:win-runtime
       - run: node scripts/audit-media-binaries.mjs --platform windows
+      - run: npm run typecheck --prefix mcp
+      - run: npm test --prefix mcp
       - run: npm run build --prefix mcp
       - run: npm run build
       - run: npx electron-builder --win dir --x64 --config electron-builder.yml --publish never

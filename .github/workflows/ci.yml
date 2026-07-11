@@ -93,6 +93,8 @@ jobs:
       - run: node scripts/audit-media-binaries.mjs --platform windows
       - run: npm run typecheck
       - run: npm test
+      - run: npm run typecheck --prefix mcp
+      - run: npm test --prefix mcp
       - run: npm run build
       - run: npm run build --prefix mcp
       - name: Nested-path private Python stub pipeline
