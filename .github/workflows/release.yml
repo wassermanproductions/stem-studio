@@ -148,6 +148,11 @@ jobs:
       - name: Collect media provenance and licenses
         shell: pwsh
         run: |
+          $sourceChecksums = 'release/corresponding-source/SHA256SUMS'
+          if (Test-Path $sourceChecksums) {
+            Move-Item $sourceChecksums `
+              'release/corresponding-source/FFmpeg-CORRESPONDING-SOURCE-SHA256SUMS' -Force
+          }
           Copy-Item build/runtime/windows/LICENSE-FFmpeg.txt release/FFMPEG-GPL-3.0-or-later.txt
           Copy-Item build/runtime/windows/LICENSE-uv-apache release/UV-Apache-2.0.txt
           Copy-Item build/runtime/windows/media-provenance.json release/windows-media-provenance.json
