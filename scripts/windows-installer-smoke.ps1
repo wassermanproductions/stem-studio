@@ -21,6 +21,14 @@ if (-not $shortcut) { throw 'Start Menu shortcut missing' }
 $desktopRoot = [Environment]::GetFolderPath('Desktop')
 $desktopShortcut = Get-ChildItem $desktopRoot -Filter 'Stem Studio*.lnk' | Select-Object -First 1
 if (-not $desktopShortcut) { throw 'Desktop shortcut missing' }
+$shell = New-Object -ComObject WScript.Shell
+$startMenuTarget = $shell.CreateShortcut($shortcut.FullName).TargetPath
+$desktopTarget = $shell.CreateShortcut($desktopShortcut.FullName).TargetPath
+foreach ($target in @($startMenuTarget, $desktopTarget)) {
+  if ([IO.Path]::GetFullPath($target) -ine [IO.Path]::GetFullPath($appExe.FullName)) {
+    throw "Unicode shortcut target mismatch: $target instead of $($appExe.FullName)"
+  }
+}
 
 $oldPath = $env:PATH
 try {

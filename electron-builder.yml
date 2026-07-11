@@ -51,6 +51,7 @@ win:
     - from: build/runtime/windows
       to: runtime-bootstrap/windows
 nsis:
+  unicode: true
   oneClick: false
   perMachine: false
   allowElevation: false
