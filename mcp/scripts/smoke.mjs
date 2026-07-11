@@ -329,7 +329,12 @@ function captureToCompletion(cmd, args, extraEnv = {}) {
   return new Promise((res, rej) => {
     const child = spawn(cmd, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, ...extraEnv },
+      env: {
+        ...process.env,
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8',
+        ...extraEnv
+      },
       windowsHide: true
     })
     let out = ''
@@ -347,7 +352,12 @@ function runToCompletion(cmd, args, extraEnv = {}) {
   return new Promise((res, rej) => {
     const c = spawn(cmd, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, ...extraEnv }
+      env: {
+        ...process.env,
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8',
+        ...extraEnv
+      }
     })
     let err = ''
     c.stderr.on('data', (d) => (err += d))

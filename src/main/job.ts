@@ -230,7 +230,13 @@ export async function probeWorker(): Promise<WorkerProbe> {
       probeWorkerArgs(cacheDir),
       childSpawnOptions({
         cwd: workerRoot(),
-        env: { ...process.env, PYTHONPATH: workerRoot(), PYTHONUNBUFFERED: '1' },
+        env: {
+          ...process.env,
+          PYTHONPATH: workerRoot(),
+          PYTHONUNBUFFERED: '1',
+          PYTHONUTF8: '1',
+          PYTHONIOENCODING: 'utf-8'
+        },
         stdio: ['ignore', 'pipe', 'pipe']
       })
     ))
@@ -278,7 +284,13 @@ function runWorker(
       args,
       childSpawnOptions({
         cwd: workerRoot(),
-        env: { ...process.env, PYTHONPATH: workerRoot(), PYTHONUNBUFFERED: '1' },
+        env: {
+          ...process.env,
+          PYTHONPATH: workerRoot(),
+          PYTHONUNBUFFERED: '1',
+          PYTHONUTF8: '1',
+          PYTHONIOENCODING: 'utf-8'
+        },
         stdio: ['ignore', 'pipe', 'pipe']
       })
     ))

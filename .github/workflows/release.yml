@@ -235,7 +235,7 @@ jobs:
             Where-Object Name -NotMatch 'Uninstall' | Select-Object -First 1
           if (-not $appExe) { throw 'Packaged app executable missing' }
           $env:STEMSTUDIO_WINDOWS_PROFILE = 'cpu'
-          Remove-Item Env:STEMSTUDIO_USER_DATA -ErrorAction SilentlyContinue
+          $env:STEMSTUDIO_USER_DATA = $userData
           $setup = Start-Process $appExe.FullName -ArgumentList '--setup-runtime-smoke' `
             -Wait -PassThru -NoNewWindow
           if ($setup.ExitCode -ne 0) { throw "Managed app runtime setup exited $($setup.ExitCode)" }
@@ -266,7 +266,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-tiger-cpu-gate-${{ steps.tag.outputs.tag }}
+          name: windows-tiger-cpu-gate-${{ github.run_id }}
           path: ${{ runner.temp }}/OneDrive - Studio/Director's Cut/场景 TIGER Gate/Pipeline Output
           if-no-files-found: warn
           retention-days: 14
@@ -371,5 +371,5 @@ jobs:
             gh release create "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" \
               --title "Stem Studio ${{ steps.tag.outputs.tag }}" --generate-notes
           gh release upload "${{ steps.tag.outputs.tag }}" \
-            release/*.dmg release/*-mac.zip \
+            release/*.dmg release/*-mac-*.zip \
             --repo "${{ github.repository }}" --clobber

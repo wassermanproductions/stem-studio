@@ -1,5 +1,5 @@
 # Reproducible checksums and patches across Windows/macOS checkouts.
-*.patch text eol=lf
+*.patch text eol=lf -whitespace
 *.lock text eol=lf
 *.json text eol=lf
 *.mjs text eol=lf

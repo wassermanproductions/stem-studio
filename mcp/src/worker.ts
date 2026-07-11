@@ -44,7 +44,9 @@ export function runWorker(
       env: {
         ...(opts.env ?? process.env),
         PYTHONPATH: root,
-        PYTHONUNBUFFERED: '1'
+        PYTHONUNBUFFERED: '1',
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8'
       },
       stdio: ['ignore', 'pipe', 'pipe']
     })

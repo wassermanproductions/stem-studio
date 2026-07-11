@@ -409,7 +409,9 @@ async function setupWindowsEnvironment(
     UV_PYTHON_INSTALL_DIR: join(runtime, 'python'),
     UV_CACHE_DIR: join(runtime, 'uv-cache'),
     UV_NO_MODIFY_PATH: '1',
-    UV_MANAGED_PYTHON: '1'
+    UV_MANAGED_PYTHON: '1',
+    PYTHONUTF8: '1',
+    PYTHONIOENCODING: 'utf-8'
   }
   await mkdir(runtime, { recursive: true })
 
