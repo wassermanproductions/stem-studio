@@ -143,6 +143,10 @@ async function main() {
   const inputVideo = join(work, "Picture Lock '01' 场景.mov")
   const outDir = join(work, "Output Stems 'Final' 场景")
   const engine = process.env.SMOKE_ENGINE || 'stub'
+  const separationTimeoutMs = timeoutFromEnv(
+    'SMOKE_SEPARATION_TIMEOUT_MS',
+    engine === 'tiger' ? 1_200_000 : 300_000
+  )
   const makeVideo = process.env.SMOKE_VIDEO === '1'
   const ffmpeg = process.env.STEMSTUDIO_FFMPEG || 'ffmpeg'
   const ffprobe = process.env.STEMSTUDIO_FFPROBE || 'ffprobe'
@@ -259,7 +263,7 @@ async function main() {
         },
         _meta: { progressToken: 'smoke-1' }
       },
-      300000
+      separationTimeoutMs
     )
     if (sepRes.isError) throw new Error(`separate_stems failed: ${sepRes.content?.[0]?.text}`)
     const sep = toolJson(sepRes)
@@ -312,10 +316,7 @@ async function main() {
     for (const line of transcript) console.log(line)
     console.log('=== SMOKE PASS ===\n')
   } finally {
-    try {
-      child.stdin.end()
-    } catch {}
-    child.kill('SIGKILL')
+    await stopServerChild(child)
     if (serverStderr.trim()) {
       console.error('--- server stderr ---\n' + serverStderr.trim())
     }
@@ -323,6 +324,41 @@ async function main() {
       await rm(requestedRoot ? base : work, { recursive: true, force: true }).catch(() => {})
     }
   }
+}
+
+function timeoutFromEnv(name, fallback) {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < 1_000 || value > 3_600_000) {
+    throw new Error(`${name} must be an integer from 1000 to 3600000 milliseconds`)
+  }
+  return value
+}
+
+async function stopServerChild(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return
+  const closed = new Promise((resolvePromise) => child.once('close', () => resolvePromise(true)))
+  try { child.stdin.end() } catch {}
+  if (await Promise.race([closed, delay(15_000, false)])) return
+
+  if (process.platform === 'win32' && child.pid) {
+    await new Promise((resolvePromise) => {
+      const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore'
+      })
+      killer.once('error', resolvePromise)
+      killer.once('close', resolvePromise)
+    })
+  } else {
+    try { child.kill('SIGKILL') } catch {}
+  }
+  await Promise.race([closed, delay(5_000, false)])
+}
+
+function delay(ms, value) {
+  return new Promise((resolvePromise) => setTimeout(() => resolvePromise(value), ms))
 }
 
 function captureToCompletion(cmd, args, extraEnv = {}) {

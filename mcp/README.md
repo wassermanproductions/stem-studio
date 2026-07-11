@@ -38,6 +38,7 @@ All optional — sensible fallbacks are built in.
 | `STEMSTUDIO_USER_DATA_FOLDER` | Distribution-specific folder name for an MCP launcher. Packaged builds read the same value from `stem-studio-distribution.json`. | `stem-studio`. |
 | `STEMSTUDIO_CACHE` | Model-weights cache dir. | Packaged app's `models/`; source checkout `~/.stemstudio/models`. |
 | `STEMSTUDIO_WINDOWS_PROFILE` | Windows setup profile: `cpu` or experimental `cuda`. | `cpu`; failed CUDA setup automatically rebuilds the CPU profile. |
+| `SMOKE_SEPARATION_TIMEOUT_MS` | Integration-smoke timeout for a long `separate_stems` call. | 20 minutes for TIGER, 5 minutes for the stub. |
 
 The worker is always launched with `PYTHONPATH=<repo>/python`.
 

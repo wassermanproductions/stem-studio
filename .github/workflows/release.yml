@@ -271,6 +271,7 @@ jobs:
           $env:SMOKE_PACKAGED_RESOLUTION = '1'
           $env:STEMSTUDIO_SMOKE_ROOT = Join-Path $root 'Pipeline Output'
           $env:SMOKE_ENGINE = 'tiger'
+          $env:SMOKE_SEPARATION_TIMEOUT_MS = '1200000'
           $env:SMOKE_VIDEO = '1'
           $env:SMOKE_KEEP_OUTPUT = '1'
           node mcp/scripts/smoke.mjs
