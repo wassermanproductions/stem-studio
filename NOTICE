@@ -34,8 +34,9 @@ demucs (library)
   License: MIT
 
 MVSEP-CDX23 (model weights)
-  Source for an experimental adapter remains in the repository, but public
+  Source for an experimental adapter remains in the repository. Public Windows
   builds do not install, download, or expose this engine or the Max tier because
-  the checkpoint repository does not state an adequate model license.
+  the checkpoint repository does not state an adequate model license. Existing
+  macOS/Linux behavior is preserved by this port.
   Source:  https://github.com/ZFTurbo/MVSEP-CDX23-Cinematic-Sound-Demixing
   Author:  Roman Solovyev (ZFTurbo)

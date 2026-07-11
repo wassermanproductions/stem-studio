@@ -12,8 +12,8 @@ emits line-delimited JSON progress on stdout:
     {"event":"error","message":"..."}
 
 The separation itself is delegated to an ``Engine`` (see ``Engine`` protocol
-below). Public production runs licensed TIGER; the dependency-light stub is
-enabled only by the repository test harness.
+below). Public Windows production runs licensed TIGER; macOS/Linux retain the
+upstream engine set, including the dependency-light stub.
 """
 
 from __future__ import annotations
@@ -36,12 +36,18 @@ STEM_FILES: Dict[str, str] = {
 
 ProgressCb = Callable[[str, float], None]
 
-# MVSEP checkpoints do not publish a clear license. Source remains available
-# for research builds, but public binaries and their MCP/UI never enable it.
-UNLICENSED_ENGINES_ENABLED = (
-    os.environ.get("STEMSTUDIO_ENABLE_UNLICENSED_ENGINES") == "1"
-)
-TEST_ENGINES_ENABLED = os.environ.get("STEMSTUDIO_ENABLE_TEST_ENGINES") == "1"
+# MVSEP checkpoints do not publish a clear license. Public Windows binaries
+# default this off and their app/MCP processes force it off. macOS/Linux retain
+# the upstream engine behavior; source-only research runs can opt in/out with
+# the environment variable.
+UNLICENSED_ENGINES_ENABLED = os.environ.get(
+    "STEMSTUDIO_ENABLE_UNLICENSED_ENGINES",
+    "0" if os.name == "nt" else "1",
+) == "1"
+TEST_ENGINES_ENABLED = os.environ.get(
+    "STEMSTUDIO_ENABLE_TEST_ENGINES",
+    "0" if os.name == "nt" else "1",
+) == "1"
 
 
 class Engine(Protocol):
@@ -192,7 +198,7 @@ def build_engine(name: str, quality: str, cache_dir: str | None) -> Engine:
         return EngineMax(cache_dir=cache_dir)
     if name == "stub":
         if not TEST_ENGINES_ENABLED:
-            raise ValueError("the stub engine is available only to the test harness")
+            raise ValueError("the stub engine is unavailable in this distribution")
         from .engine_stub import EngineStub
 
         return EngineStub()
@@ -212,8 +218,8 @@ def build_engine(name: str, quality: str, cache_dir: str | None) -> Engine:
 def available_engines() -> list[str]:
     return (
         ["tiger"]
-        + (["stub"] if TEST_ENGINES_ENABLED else [])
         + (["mvsep"] if UNLICENSED_ENGINES_ENABLED else [])
+        + (["stub"] if TEST_ENGINES_ENABLED else [])
     )
 
 
@@ -224,7 +230,7 @@ def available_qualities() -> list[str]:
 def probe() -> dict:
     """Return one dict describing the worker's torch/device stack. Printed as a
     single JSON line by ``--probe`` and used by the app to default the quality
-    tier (GPU→high, CPU→fast)."""
+    tier (Windows GPU→high; non-Windows CUDA→max; CPU→fast)."""
     from . import device
 
     torch_version: str | None = None
@@ -241,6 +247,7 @@ def probe() -> dict:
         "mps": device.mps_available(),
         "torch": torch_version,
         "engines": available_engines(),
+        "qualities": available_qualities(),
     }
 
 
@@ -257,7 +264,7 @@ def main(argv=None) -> int:
         "--engine",
         default="tiger",
         choices=available_engines(),
-        help="separation engine (public build: tiger)",
+        help="separation engine (public Windows build: tiger)",
     )
     parser.add_argument(
         "--quality",
@@ -291,6 +298,7 @@ def main(argv=None) -> int:
                     "mps": False,
                     "torch": None,
                     "engines": available_engines(),
+                    "qualities": available_qualities(),
                     "error": str(exc),
                 }
             )

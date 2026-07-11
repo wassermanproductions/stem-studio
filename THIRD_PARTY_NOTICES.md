@@ -24,7 +24,9 @@ Apache-only.
   pinned revision and verified against the hashes in `assets-manifest.json`.
 
 The MVSEP checkpoint is not distributed, downloaded, or exposed by public
-builds because its repository does not state an adequate model license.
+Windows builds because its repository does not state an adequate model
+license. This Windows restriction does not alter the existing macOS/Linux
+source behavior.
 
 ## Bundled JavaScript runtime packages
 

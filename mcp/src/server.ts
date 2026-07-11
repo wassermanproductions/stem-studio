@@ -57,13 +57,29 @@ function fail(message: string) {
   }
 }
 
-export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
+export function createServer(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): McpServer {
   const server = new McpServer({ name: 'stem-studio', version: VERSION })
   const jobs = new JobRegistry()
-  const testEnginesEnabled = env.STEMSTUDIO_ENABLE_TEST_ENGINES === '1'
-  const engineSchema = testEnginesEnabled
-    ? z.enum(['tiger', 'stub'])
-    : z.literal('tiger')
+  const testEnginesEnabled = platform !== 'win32'
+    ? env.STEMSTUDIO_ENABLE_TEST_ENGINES !== '0'
+    : env.STEMSTUDIO_ENABLE_TEST_ENGINES === '1'
+  const unlicensedEnginesEnabled = platform !== 'win32'
+    ? env.STEMSTUDIO_ENABLE_UNLICENSED_ENGINES !== '0'
+    : env.STEMSTUDIO_RESEARCH_BUILD === '1' &&
+      env.STEMSTUDIO_ENABLE_UNLICENSED_ENGINES === '1'
+  const engineSchema = unlicensedEnginesEnabled
+    ? testEnginesEnabled
+      ? z.enum(['tiger', 'mvsep', 'stub'])
+      : z.enum(['tiger', 'mvsep'])
+    : testEnginesEnabled
+      ? z.enum(['tiger', 'stub'])
+      : z.literal('tiger')
+  const qualitySchema = unlicensedEnginesEnabled
+    ? z.enum(['fast', 'high', 'max'])
+    : z.enum(['fast', 'high'])
 
   /**
    * Send a notifications/progress message if the caller supplied a
@@ -145,16 +161,23 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
           .string()
           .optional()
           .describe('Directory for the output WAVs/.mov. Default: alongside the input.'),
-        quality: z
-          .enum(['fast', 'high'])
+        quality: qualitySchema
           .optional()
-          .describe('fast (default) or high (TTA ensemble).'),
+          .describe(
+            unlicensedEnginesEnabled
+              ? 'fast (default), high (TTA ensemble), or legacy max (dual-engine blend).'
+              : 'fast (default) or high (TTA ensemble).'
+          ),
         engine: engineSchema
           .optional()
           .describe(
-            testEnginesEnabled
-              ? 'Engine: tiger, or the test-only stub enabled by the CI harness.'
-              : 'Licensed production engine: tiger.'
+            unlicensedEnginesEnabled
+              ? testEnginesEnabled
+                ? 'Engine: tiger, mvsep, or the test-only stub enabled by the CI harness.'
+                : 'Engine: tiger or legacy mvsep.'
+              : testEnginesEnabled
+                ? 'Engine: tiger, or the test-only stub enabled by the CI harness.'
+                : 'Licensed Windows production engine: tiger.'
           ),
         multitrack_video: z
           .boolean()

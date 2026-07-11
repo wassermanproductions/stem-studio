@@ -6,8 +6,8 @@ $installer = Get-ChildItem release -File -Filter '*.exe' |
 if (-not $installer) { throw 'NSIS installer not found' }
 
 $installDir = Join-Path $env:RUNNER_TEMP "OneDrive - Studio\Director's Cut\场景 Installed App"
-$installArgument = "/D=`"$installDir`""
-$install = Start-Process $installer.FullName -ArgumentList @('/S', $installArgument) -Wait -PassThru
+Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
+$install = Start-Process $installer.FullName -ArgumentList @('/S', "/D=$installDir") -Wait -PassThru
 if ($install.ExitCode -ne 0) { throw "Installer exited $($install.ExitCode)" }
 
 $appExe = Get-ChildItem $installDir -File -Filter '*.exe' |

@@ -21,7 +21,10 @@ import {
   STEM_SUFFIX,
   MARRIED_SUFFIX,
   DEFAULT_ENGINE,
+  productionQualitiesForPlatform,
   resolveQuality,
+  type AppPlatform,
+  type QualityMode,
   type StemKind,
   type SeparateOptions,
   type JobProgress,
@@ -32,6 +35,12 @@ import { ffmpegPath, runFfmpeg, probe } from './ffmpeg'
 import { findReadyPython, setupUserVenv, workerRoot } from './pythonEnv'
 import { LineParser } from '../shared/workerProtocol'
 import { childSpawnOptions, terminateProcessTree, trackProcess } from './process'
+import {
+  cleanupStagedDeliveries,
+  promoteStagedDeliveries,
+  stagedDeliveryPath,
+  type StagedDelivery
+} from '../shared/atomicDeliveries'
 
 /** Maps a worker stem key to the delivery StemKind. */
 const WORKER_TO_STEM: Record<string, StemKind> = {
@@ -61,6 +70,27 @@ interface ActiveJob {
 
 const active = new Map<string, ActiveJob>()
 
+function appPlatform(): AppPlatform {
+  return process.platform === 'darwin'
+    ? 'mac'
+    : process.platform === 'win32'
+      ? 'windows'
+      : 'linux'
+}
+
+function productionWorkerEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    // Public Windows binaries never enable the unlicensed checkpoint path.
+    // Non-Windows builds retain upstream behavior, while allowing an explicit
+    // source-user opt-out with STEMSTUDIO_ENABLE_UNLICENSED_ENGINES=0.
+    STEMSTUDIO_ENABLE_UNLICENSED_ENGINES:
+      process.platform === 'win32'
+        ? '0'
+        : (process.env.STEMSTUDIO_ENABLE_UNLICENSED_ENGINES ?? '1')
+  }
+}
+
 export async function cancelJob(jobId: string): Promise<void> {
   const rec = active.get(jobId)
   if (!rec) return
@@ -83,7 +113,7 @@ export async function runJob(
   cb: RunCallbacks
 ): Promise<JobResult> {
   const jobDir = join(app.getPath('userData'), 'jobs', jobId)
-  const deliveryPaths = new Set<string>()
+  const stagedDeliveries: StagedDelivery[] = []
   let markSettled!: () => void
   const settled = new Promise<void>((resolve) => { markSettled = resolve })
   const rec: ActiveJob = {
@@ -139,6 +169,9 @@ export async function runJob(
     const cacheDir = join(app.getPath('userData'), 'models')
     await mkdir(cacheDir, { recursive: true })
     const quality = resolveQuality(opts)
+    if (!productionQualitiesForPlatform(appPlatform()).includes(quality)) {
+      throw new Error(`Quality "${quality}" is unavailable in this Windows distribution.`)
+    }
     const args = workerArgs({
       inputWav,
       outDir: workerOut,
@@ -154,15 +187,18 @@ export async function runJob(
     cb.onProgress({ jobId, stage: 'writing', percent: 0 })
     await mkdir(opts.outputDir, { recursive: true })
     const stems = {} as Record<StemKind, string>
+    const stagedStems = {} as Record<StemKind, string>
     let done = 0
     for (const workerKey of Object.keys(WORKER_TO_STEM)) {
       const kind = WORKER_TO_STEM[workerKey]!
       const src = workerOutputs[workerKey]
       if (!src) throw new Error(`Worker did not produce stem "${workerKey}"`)
       const dest = join(opts.outputDir, `${base}_${STEM_SUFFIX[kind]}.wav`)
-      deliveryPaths.add(dest)
-      await runFfmpeg(ffmpeg, convertStemArgs(src, dest), processHooks)
+      const staged = stagedDeliveryPath(dest, jobId)
+      stagedDeliveries.push({ finalPath: dest, stagedPath: staged })
+      await runFfmpeg(ffmpeg, convertStemArgs(src, staged), processHooks)
       stems[kind] = dest
+      stagedStems[kind] = staged
       done++
       cb.onProgress({ jobId, stage: 'writing', percent: (done / 3) * 100 })
       checkCancel()
@@ -172,8 +208,9 @@ export async function runJob(
     // delivery spec (48 kHz / 24-bit) so all four WAVs are format-identical and
     // sample-aligned. Built from the same extracted audio the stems derive from.
     const marriedMix = join(opts.outputDir, `${base}_${MARRIED_SUFFIX}.wav`)
-    deliveryPaths.add(marriedMix)
-    await runFfmpeg(ffmpeg, marriedMixArgs(inputWav, marriedMix), processHooks)
+    const stagedMarried = stagedDeliveryPath(marriedMix, jobId)
+    stagedDeliveries.push({ finalPath: marriedMix, stagedPath: stagedMarried })
+    await runFfmpeg(ffmpeg, marriedMixArgs(inputWav, stagedMarried), processHooks)
     checkCancel()
 
     // 6) Optional multitrack video remux (video inputs only). The .mov keeps
@@ -182,14 +219,17 @@ export async function runJob(
     if (opts.multitrackVideo && info.hasVideo) {
       cb.onProgress({ jobId, stage: 'remuxing', percent: -1 })
       multitrackVideo = join(opts.outputDir, `${base}_STEMS.mov`)
-      deliveryPaths.add(multitrackVideo)
+      const stagedVideo = stagedDeliveryPath(multitrackVideo, jobId)
+      stagedDeliveries.push({ finalPath: multitrackVideo, stagedPath: stagedVideo })
       await runFfmpeg(
         ffmpeg,
-        remuxMultitrackArgs(opts.inputPath, stems, multitrackVideo),
+        remuxMultitrackArgs(opts.inputPath, stagedStems, stagedVideo),
         processHooks
       )
       checkCancel()
     }
+
+    await promoteStagedDeliveries(stagedDeliveries, jobId, checkCancel)
 
     await rm(jobDir, { recursive: true, force: true }).catch(() => {})
     active.delete(jobId)
@@ -198,7 +238,7 @@ export async function runJob(
     return { jobId, stems, marriedMix, multitrackVideo, outputDir: opts.outputDir }
   } catch (err) {
     await Promise.all([...rec.children].map((child) => terminateProcessTree(child)))
-    await Promise.all([...deliveryPaths].map((path) => rm(path, { force: true }).catch(() => {})))
+    await cleanupStagedDeliveries(stagedDeliveries).catch(() => {})
     await rm(jobDir, { recursive: true, force: true }).catch(() => {})
     active.delete(jobId)
     markSettled()
@@ -217,7 +257,8 @@ export async function probeWorker(): Promise<WorkerProbe> {
     cuda: false,
     mps: false,
     torch: null,
-    engines: ['tiger']
+    engines: process.platform === 'win32' ? ['tiger'] : ['tiger', 'mvsep', 'stub'],
+    qualities: [...productionQualitiesForPlatform(appPlatform())]
   }
   const py = await findReadyPython()
   if (!py) return fallback
@@ -231,7 +272,7 @@ export async function probeWorker(): Promise<WorkerProbe> {
       childSpawnOptions({
         cwd: workerRoot(),
         env: {
-          ...process.env,
+          ...productionWorkerEnv(),
           PYTHONPATH: workerRoot(),
           PYTHONUNBUFFERED: '1',
           PYTHONUTF8: '1',
@@ -258,7 +299,13 @@ export async function probeWorker(): Promise<WorkerProbe> {
             cuda: !!obj.cuda,
             mps: !!obj.mps,
             torch: typeof obj.torch === 'string' ? obj.torch : null,
-            engines: Array.isArray(obj.engines) ? obj.engines : fallback.engines
+            engines: Array.isArray(obj.engines) ? obj.engines : fallback.engines,
+            qualities: Array.isArray(obj.qualities)
+              ? obj.qualities.filter(
+                  (quality): quality is QualityMode =>
+                    quality === 'fast' || quality === 'high' || quality === 'max'
+                )
+              : fallback.qualities
           })
           return
         }
@@ -285,7 +332,7 @@ function runWorker(
       childSpawnOptions({
         cwd: workerRoot(),
         env: {
-          ...process.env,
+          ...productionWorkerEnv(),
           PYTHONPATH: workerRoot(),
           PYTHONUNBUFFERED: '1',
           PYTHONUTF8: '1',

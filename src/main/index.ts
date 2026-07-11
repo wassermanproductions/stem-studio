@@ -19,6 +19,8 @@ import { terminateAllProcesses } from './process'
 import {
   AUDIO_EXTENSIONS,
   VIDEO_EXTENSIONS,
+  productionQualitiesForPlatform,
+  type AppPlatform,
   type SeparateOptions,
   type PythonEnvStatus,
   type WorkerProbe
@@ -53,6 +55,11 @@ const buildMetadata = packagedBuildMetadata()
 const isCommunityBuild = buildMetadata.isCommunityBuild === true
 const displayName = buildMetadata.displayName ?? 'Stem Studio'
 const dataFolder = buildMetadata.userDataFolder ?? 'stem-studio'
+const platformName: AppPlatform = process.platform === 'darwin'
+  ? 'mac'
+  : process.platform === 'win32'
+    ? 'windows'
+    : 'linux'
 const userDataOverride = process.env.STEMSTUDIO_USER_DATA?.trim()
 if (userDataOverride && !isAbsolute(userDataOverride)) {
   throw new Error('STEMSTUDIO_USER_DATA must be an absolute path.')
@@ -365,6 +372,9 @@ ipcMain.handle('separate', (_e, jobId: string, opts: SeparateOptions) => {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
     return { ok: false, error: 'Invalid job identifier.' }
   }
+  if (opts.quality && !productionQualitiesForPlatform(platformName).includes(opts.quality)) {
+    return { ok: false, error: `Quality "${opts.quality}" is unavailable on Windows.` }
+  }
   const result = runJob(jobId, opts, {
       onProgress: (p) => send('job:progress', p),
       onSetup: (detail) => send('job:setup', detail)
@@ -415,15 +425,11 @@ ipcMain.handle('versions', () => ({
 }))
 
 ipcMain.handle('platformInfo', () => ({
-  platform:
-    process.platform === 'darwin'
-      ? 'mac'
-      : process.platform === 'win32'
-        ? 'windows'
-        : 'linux',
+  platform: platformName,
   appName: displayName,
   showInFolderLabel: process.platform === 'darwin' ? 'Reveal in Finder' : 'Show in Folder',
   isCommunityBuild,
+  productionQualities: [...productionQualitiesForPlatform(platformName)],
   maintainerCredit: buildMetadata.maintainer
 }))
 

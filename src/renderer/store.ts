@@ -11,7 +11,7 @@
 
 import { create } from 'zustand'
 import {
-  defaultQualityForDevice,
+  defaultQualityForProbe,
   type ProbeResult,
   type JobProgress,
   type JobResult,
@@ -97,7 +97,7 @@ interface StemStudioState {
   input: ProbeResult | null
   outputDir: string | null
   multitrackVideo: boolean
-  /** Selected public quality tier. GPU devices default to high; CPU to fast. */
+  /** Selected quality tier. Windows exposes Fast/High; macOS/Linux retain Max. */
   quality: QualityMode
   /** Optional dialogue-polish pass: reduce residual music/effects bleed in the
    * voices. Off by default; a session preference (preserved across reset). */
@@ -182,7 +182,7 @@ export const useStore = create<StemStudioState>((set, get) => ({
     set({
       probe,
       // Default the tier from the device unless the user already picked one.
-      quality: userChoseQuality ? get().quality : defaultQualityForDevice(probe.device)
+      quality: userChoseQuality ? get().quality : defaultQualityForProbe(probe)
     }),
 
   beginSeparate: (jobId) =>

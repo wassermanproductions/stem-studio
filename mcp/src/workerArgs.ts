@@ -1,7 +1,8 @@
 /**
  * Pure builder for the Python separation-worker argv. Mirrors the app's
  * `src/shared/workerArgs.ts` but does NOT hard-validate the engine/quality
- * public enums. Research-only MVSEP/Max are deliberately absent.
+ * public Windows schema. Legacy macOS/Linux and research-only MVSEP/Max are
+ * represented in the internal types and gated by the server/worker runtime.
  */
 
 import {

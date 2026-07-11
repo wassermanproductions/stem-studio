@@ -130,7 +130,16 @@ jobs:
         run: ./scripts/windows-installer-smoke.ps1
       - run: npm run sbom:spdx
       - run: npm run sbom:cyclonedx
-      - run: npm run sbom:enrich
+      - run: npm run sbom:enrich -- --target windows-x64
+      - name: Verify Windows-only runtime SBOM scope
+        shell: pwsh
+        run: |
+          $spdx = Get-Content release/stem-studio.spdx.json -Raw
+          $cyclone = Get-Content release/stem-studio.cdx.json -Raw
+          foreach ($document in @($spdx, $cyclone)) {
+            if ($document -notmatch 'windows-x64') { throw 'Windows runtime components missing from SBOM' }
+            if ($document -match 'macos-arm64-source-build') { throw 'Windows SBOM contains unshipped macOS media components' }
+          }
       - run: node scripts/fetch-ffmpeg-source.mjs
 
       - name: Collect media provenance and licenses
@@ -371,5 +380,5 @@ jobs:
             gh release create "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" \
               --title "Stem Studio ${{ steps.tag.outputs.tag }}" --generate-notes
           gh release upload "${{ steps.tag.outputs.tag }}" \
-            release/*.dmg release/*-mac-*.zip \
+            release/*.dmg release/*.zip \
             --repo "${{ github.repository }}" --clobber

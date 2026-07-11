@@ -162,10 +162,10 @@ and `python -m stemstudio_worker.separate --probe` prints one JSON line describi
 
 ## Separation engine
 
-The Python worker is **engine-agnostic**: `separate.py` owns the CLI, WAV I/O, and progress protocol, while the actual separation is provided by interchangeable **separation engine modules** behind a common interface. Public production configuration exposes licensed TIGER only; a dependency-light stub remains available to the repository test harness through `STEMSTUDIO_ENABLE_TEST_ENGINES=1`.
+The Python worker is **engine-agnostic**: `separate.py` owns the CLI, WAV I/O, and progress protocol, while the actual separation is provided by interchangeable **separation engine modules** behind a common interface. Public Windows production configuration exposes licensed TIGER only. Existing macOS/Linux behavior retains the upstream MVSEP/Max and dependency-light stub paths; Windows test runs can enable the stub explicitly with `STEMSTUDIO_ENABLE_TEST_ENGINES=1`.
 
 - **Device.** Selection order everywhere is **CUDA → MPS → CPU**; override with `STEMSTUDIO_DEVICE=cuda|mps|cpu`. On Apple silicon that means MPS; on an NVIDIA box (e.g. a [DGX Spark](#running-on-nvidia-dgx-spark)) it means CUDA. A GPU is *strongly* preferred — CPU separation is dramatically slower. Run `python -m stemstudio_worker.separate --probe` to print the resolved device as one JSON line.
-- **Quality modes** (`--quality fast|high`, UI selector). `fast` is a quick single pass; `high` is a multi-pass ensemble that separates better for a few times the runtime. GPU devices default to High and CPU defaults to Fast.
+- **Quality modes.** Public Windows builds expose `fast|high`: `fast` is a quick single pass and `high` is a slower multi-pass ensemble. Existing macOS/Linux builds also retain upstream `max` (the dual-engine blend). Windows accelerators default to High, non-Windows CUDA defaults to Max, MPS defaults to High, and CPU defaults to Fast.
 - **Chunked overlap-add.** Long audio is processed in bounded ~30 s blocks with a 1 s Hann-crossfaded overlap (`pipeline.chunked_overlap_add`), so peak memory is independent of input length and blocks join without seams.
 - **Mixture consistency ("nothing lost").** After separation the residual `mix − (dialogue + music + effects)` is folded back into the effects stem, so the three stems sum to the original mix **sample-for-sample** (verified `max|residual| < 1e-6`). The worker writes 32-bit float stems to preserve this bit-exactly through to the ffmpeg delivery step.
 
@@ -181,7 +181,7 @@ class Engine(Protocol):
         ...
 ```
 
-**CLI:** `python -m stemstudio_worker.separate --input <wav> --outdir <dir> [--engine tiger] [--quality fast|high] [--cache-dir <dir>]` writes `dialogue.wav`, `music.wav`, `effects.wav` into `<dir>` (defaults: `--engine tiger --quality fast`). `python -m stemstudio_worker.separate --probe` prints one JSON line describing the device/torch stack and exits. MVSEP/Max source remains behind the disabled `STEMSTUDIO_ENABLE_UNLICENSED_ENGINES=1` research gate and is never enabled by public builds.
+**CLI:** `python -m stemstudio_worker.separate --input <wav> --outdir <dir> [--engine tiger] [--quality fast|high] [--cache-dir <dir>]` writes `dialogue.wav`, `music.wav`, `effects.wav` into `<dir>` (defaults: `--engine tiger --quality fast`). `python -m stemstudio_worker.separate --probe` prints one JSON line describing the device/torch stack and its available engines/qualities. Windows defaults to TIGER Fast/High and requires the explicit source-only research gate for MVSEP/Max; macOS/Linux retain their existing engine choices.
 
 **Stdout — line-delimited JSON:**
 
@@ -212,12 +212,12 @@ The `_STEMS.mov` carries the three stems + video; the format-identical, sample-a
 
 ## Running on NVIDIA DGX Spark
 
-Stem Studio runs on an **NVIDIA DGX Spark** (GB10 Grace Blackwell, DGX OS = Ubuntu-based, arm64, CUDA, 128 GB unified memory), where the public **High** tier is the default. First-run steps:
+Stem Studio runs on an **NVIDIA DGX Spark** (GB10 Grace Blackwell, DGX OS = Ubuntu-based, arm64, CUDA, 128 GB unified memory), where the existing Linux **Max** tier remains the default. First-run steps:
 
 1. **ffmpeg** — `sudo apt update && sudo apt install -y ffmpeg`. Stem Studio resolves `ffmpeg`/`ffprobe` from `/usr/bin`, `/usr/local/bin`, then `PATH`.
 2. **Python 3.10+** — DGX OS ships a suitable `python3`; Stem Studio builds and manages its own venv under the app's data folder on first separation (no manual venv needed).
 3. **PyTorch + CUDA** — first-run setup installs the worker's libraries, then checks `torch.cuda.is_available()`. If an NVIDIA GPU is present (`nvidia-smi`) but the default wheel is CPU-only, it automatically reinstalls `torch`/`torchaudio` from the CUDA aarch64 index (`https://download.pytorch.org/whl/cu128`; cu128 = CUDA 12.8, required for Blackwell). This step is a large download — allow a few minutes.
-4. **Expected behavior** — the device probe reports `cuda`, so the UI defaults the quality selector to **High**. The pinned TIGER model downloads on first use. Everything runs locally on the GPU.
+4. **Expected behavior** — the device probe reports `cuda`, so the Linux UI retains its upstream **Max** default. The pinned TIGER model downloads on first use. Everything runs locally on the GPU.
 
 ### Performance
 

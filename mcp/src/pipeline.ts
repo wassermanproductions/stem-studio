@@ -23,11 +23,19 @@ import { runFfmpeg, probe } from './ffmpeg.js'
 import { ffmpegPath, modelCacheDir, workerPythonPath } from './resolve.js'
 import { runWorker, killTree } from './worker.js'
 import {
+  cleanupStagedDeliveries,
+  promoteStagedDeliveries,
+  stagedDeliveryPath,
+  type StagedDelivery
+} from './atomicDeliveries.js'
+import {
   STEM_SUFFIX,
   MARRIED_SUFFIX,
   WORKER_TO_STEM,
   DEFAULT_ENGINE,
   DEFAULT_QUALITY,
+  type EngineName,
+  type QualityMode,
   type StemKind,
   type PipelineStage,
   type SeparationOutputs
@@ -37,8 +45,8 @@ export interface SeparateParams {
   inputPath: string
   /** Output dir; defaults to the input's directory. */
   outputDir?: string
-  quality?: 'fast' | 'high'
-  engine?: 'tiger' | 'stub'
+  quality?: QualityMode
+  engine?: EngineName
   /** Remux original video + stems into a multitrack .mov (video inputs only). */
   multitrackVideo?: boolean
   /** Optional post-separation pass to reduce music/effects bleed in dialogue. */
@@ -66,8 +74,9 @@ export function startSeparation(
 ): PipelineHandle {
   let cancelled = false
   const children = new Set<ChildProcess>()
-  const jobDir = join(tmpdir(), 'stem-studio-mcp', randomUUID())
-  const deliveryPaths = new Set<string>()
+  const jobId = randomUUID()
+  const jobDir = join(tmpdir(), 'stem-studio-mcp', jobId)
+  const stagedDeliveries: StagedDelivery[] = []
 
   let result!: Promise<SeparationOutputs>
   const cancel = async () => {
@@ -132,6 +141,7 @@ export function startSeparation(
       // 3) Convert each stem to 48 kHz / 24-bit delivery WAV.
       stage('writing', 0)
       const stems = {} as Record<StemKind, string>
+      const stagedStems = {} as Record<StemKind, string>
       let done = 0
       const workerKeys = Object.keys(WORKER_TO_STEM)
       for (const workerKey of workerKeys) {
@@ -139,9 +149,11 @@ export function startSeparation(
         const src = workerOutputs[workerKey]
         if (!src) throw new Error(`Worker did not produce stem "${workerKey}"`)
         const dest = join(outputDir, `${base}_${STEM_SUFFIX[kind]}.wav`)
-        deliveryPaths.add(dest)
-        await runFfmpeg(ffmpeg, convertStemArgs(src, dest), processHooks)
+        const staged = stagedDeliveryPath(dest, jobId)
+        stagedDeliveries.push({ finalPath: dest, stagedPath: staged })
+        await runFfmpeg(ffmpeg, convertStemArgs(src, staged), processHooks)
         stems[kind] = dest
+        stagedStems[kind] = staged
         done++
         stage('writing', (done / (workerKeys.length + 1)) * 100)
         checkCancel()
@@ -149,8 +161,9 @@ export function startSeparation(
 
       // 3b) Deliver the conformed original mix (the "married" reference track).
       const married = join(outputDir, `${base}_${MARRIED_SUFFIX}.wav`)
-      deliveryPaths.add(married)
-      await runFfmpeg(ffmpeg, marriedMixArgs(inputWav, married), processHooks)
+      const stagedMarried = stagedDeliveryPath(married, jobId)
+      stagedDeliveries.push({ finalPath: married, stagedPath: stagedMarried })
+      await runFfmpeg(ffmpeg, marriedMixArgs(inputWav, stagedMarried), processHooks)
       stage('writing', 100)
       checkCancel()
 
@@ -159,21 +172,24 @@ export function startSeparation(
       if (params.multitrackVideo && info.hasVideo) {
         stage('remuxing', -1)
         multitrackVideo = join(outputDir, `${base}_STEMS.mov`)
-        deliveryPaths.add(multitrackVideo)
+        const stagedVideo = stagedDeliveryPath(multitrackVideo, jobId)
+        stagedDeliveries.push({ finalPath: multitrackVideo, stagedPath: stagedVideo })
         await runFfmpeg(
           ffmpeg,
-          remuxMultitrackArgs(params.inputPath, stems, multitrackVideo),
+          remuxMultitrackArgs(params.inputPath, stagedStems, stagedVideo),
           processHooks
         )
         checkCancel()
       }
+
+      await promoteStagedDeliveries(stagedDeliveries, jobId, checkCancel)
 
       await rm(jobDir, { recursive: true, force: true }).catch(() => {})
       stage('done', 100)
       return { stems, married, multitrackVideo, outputDir }
     } catch (err) {
       await Promise.all([...children].map((child) => killTree(child)))
-      await Promise.all([...deliveryPaths].map((path) => rm(path, { force: true }).catch(() => {})))
+      await cleanupStagedDeliveries(stagedDeliveries).catch(() => {})
       await rm(jobDir, { recursive: true, force: true }).catch(() => {})
       throw err
     }

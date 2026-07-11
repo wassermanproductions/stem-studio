@@ -9,7 +9,8 @@ Frozen upstream implementation base:
 Windows-port modifications include native Windows window/installer behavior,
 private uv-managed Python, bundled FFmpeg/FFprobe resolution, Windows-safe
 paths and process cancellation, packaged MCP runtime discovery, dependency and
-model pinning, and public-build licensing gates. Generic changes live on
+model pinning, and Windows-only public-build licensing gates that leave the
+existing macOS/Linux engine behavior unchanged. Generic changes live on
 `feature/windows-port`; derivative identity and release branding are kept out
 of this branch.
 

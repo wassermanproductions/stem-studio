@@ -12,12 +12,12 @@ export const ENGINE_SAMPLE_RATE = 44_100
 export const OUTPUT_SAMPLE_RATE = 48_000
 export const OUTPUT_BIT_DEPTH = 24
 
-/** Internal execution engines. `stub` is enabled only by the test harness. */
-export type EngineName = 'tiger' | 'stub'
+/** Execution engines. Public Windows MCP schemas expose TIGER only. */
+export type EngineName = 'tiger' | 'mvsep' | 'stub'
 export const DEFAULT_ENGINE: EngineName = 'tiger'
 
-/** Public quality modes. */
-export type QualityMode = 'fast' | 'high'
+/** Cross-platform quality modes; public Windows schemas omit `max`. */
+export type QualityMode = 'fast' | 'high' | 'max'
 export const DEFAULT_QUALITY: QualityMode = 'fast'
 
 /** The three delivery stems, in canonical order. */

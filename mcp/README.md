@@ -129,7 +129,7 @@ Six tools. Every path is a **local file path** (never a URL or stream); every ou
 | Tool | Input | Does |
 |---|---|---|
 | `probe_media` | `path` | Returns `duration`, `sample_rate`, `channels`, `has_video`, `format`. Fast (<1s). Errors clearly if the file is missing / has no audio / ffprobe is absent. |
-| `separate_stems` | `input_path`, `output_dir?`, `quality?` (`fast`\|`high`, default `fast`), `engine?` (`tiger` only), `multitrack_video?`, `polish_dialogue?` (default `false`), `wait?` (default `true`) | Runs the licensed TIGER pipeline. Delivers `_DIALOGUE/_MUSIC/_SFX.wav` + `_MARRIED.wav` (and `_STEMS.mov` for video when `multitrack_video`). `polish_dialogue` adds an optional pass that reduces music/effects bleed in the dialogue stem (the bleed is folded into effects, so the stems still sum exactly). `wait:true` blocks + emits progress notifications; `wait:false` returns a `job_id`. |
+| `separate_stems` | `input_path`, `output_dir?`, `quality?` (`fast`\|`high` on Windows; existing macOS/Linux also expose `max`), `engine?` (`tiger` on Windows; existing macOS/Linux also expose `mvsep`), `multitrack_video?`, `polish_dialogue?` (default `false`), `wait?` (default `true`) | Runs the local separation pipeline. Delivers `_DIALOGUE/_MUSIC/_SFX.wav` + `_MARRIED.wav` (and `_STEMS.mov` for video when `multitrack_video`). `polish_dialogue` adds an optional pass that reduces music/effects bleed in the dialogue stem (the bleed is folded into effects, so the stems still sum exactly). `wait:true` blocks + emits progress notifications; `wait:false` returns a `job_id`. |
 | `check_job` | `job_id` | Status (`running`/`done`/`error`/`cancelled`), `stage`, `percent`, and on `done` the output paths. |
 | `cancel_job` | `job_id` | Kills the process tree and cleans temp. Returns the resulting status. |
 | `setup_status` | — | Readiness report: venv python present, `torch`/`numpy`/`soundfile` importable, compute device, model-cache presence. |
@@ -137,7 +137,7 @@ Six tools. Every path is a **local file path** (never a URL or stream); every ou
 
 **Runtimes / timeouts.** `probe_media`, `check_job`, `cancel_job`, and `setup_status` are sub-second. `separate_stems` runs in **minutes** — TIGER on a GPU is roughly real-time-ish and much slower on CPU; `high` takes longer. `setup_environment` is several minutes on first run. For long tools, give `wait:true` a generous timeout or use `wait:false` and poll `check_job`.
 
-Public MCP schemas expose only TIGER Fast/High. MVSEP and Max remain disabled until their checkpoint license is established; the dependency-light stub is available only when the repository's test harness explicitly enables it.
+Public Windows MCP schemas expose only TIGER Fast/High. The existing macOS/Linux schema retains MVSEP/Max and the dependency-light stub. Windows tests enable the stub explicitly; Windows source research builds must set both `STEMSTUDIO_RESEARCH_BUILD=1` and `STEMSTUDIO_ENABLE_UNLICENSED_ENGINES=1` explicitly.
 
 ---
 

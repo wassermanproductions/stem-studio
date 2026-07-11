@@ -70,11 +70,13 @@ export function App(): React.JSX.Element {
 
       <main className="content">
         {status === 'idle' && <DropView />}
-        {status === 'ready' && <ReadyView />}
+        {status === 'ready' && <ReadyView platformInfo={platformInfo} />}
         {inProgress && <ProgressView />}
         {status === 'done' && <DoneView />}
         {status === 'error' && <ErrorView />}
-        {status === 'cancelled' && <ReadyView note="Separation cancelled." />}
+        {status === 'cancelled' && (
+          <ReadyView note="Separation cancelled." platformInfo={platformInfo} />
+        )}
       </main>
 
       <footer className="footer">

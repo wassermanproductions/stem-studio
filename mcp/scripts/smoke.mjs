@@ -173,12 +173,8 @@ async function main() {
   const launcher = process.env.STEMSTUDIO_MCP_LAUNCHER
     ? resolve(process.env.STEMSTUDIO_MCP_LAUNCHER)
     : null
-  const command = launcher && process.platform === 'win32'
-    ? (process.env.ComSpec || 'cmd.exe')
-    : (launcher || process.execPath)
-  const commandArgs = launcher && process.platform === 'win32'
-    ? ['/d', '/s', '/c', `"${launcher}"`]
-    : (launcher ? [] : [SERVER])
+  const command = launcher || process.execPath
+  const commandArgs = launcher ? [] : [SERVER]
   const serverEnv = { ...process.env }
   if (PACKAGED_RESOLUTION) {
     for (const key of [
@@ -200,7 +196,11 @@ async function main() {
   const child = spawn(command, commandArgs, {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: serverEnv,
-    windowsHide: true
+    windowsHide: true,
+    // The packaged Windows bridge is a trusted generated .cmd file. Let Node
+    // serialize its path through cmd.exe; manually nesting quotes breaks paths
+    // containing spaces, apostrophes, and Unicode.
+    shell: !!launcher && process.platform === 'win32'
   })
   let serverStderr = ''
   child.stderr.setEncoding('utf-8')

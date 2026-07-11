@@ -168,13 +168,14 @@ describe('store state machine', () => {
     expect(useStore.getState().polishDialogue).toBe(true)
   })
 
-  it('applyProbe defaults the quality tier from the device (cuda→high)', () => {
+  it('applyProbe defaults CUDA to High when Max is unavailable', () => {
     useStore.getState().applyProbe({
       device: 'cuda',
       cuda: true,
       mps: false,
       torch: '2.6.0',
-      engines: ['tiger', 'stub']
+      engines: ['tiger'],
+      qualities: ['fast', 'high']
     })
     expect(useStore.getState().quality).toBe('high')
     expect(useStore.getState().probe?.device).toBe('cuda')
@@ -188,7 +189,8 @@ describe('store state machine', () => {
       cuda: true,
       mps: false,
       torch: '2.6.0',
-      engines: ['tiger', 'stub']
+      engines: ['tiger', 'mvsep', 'stub'],
+      qualities: ['fast', 'high', 'max']
     })
     expect(useStore.getState().quality).toBe('fast')
   })

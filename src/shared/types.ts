@@ -15,21 +15,37 @@ export const ENGINE_SAMPLE_RATE = 44_100
 export const OUTPUT_SAMPLE_RATE = 48_000
 export const OUTPUT_BIT_DEPTH = 24
 
-/** Internal worker engines. The app itself always invokes licensed TIGER;
- * `stub` exists solely for the repository test harness. */
-export type EngineName = 'tiger' | 'stub'
+/** Separation engines retained from the upstream cross-platform app. Public
+ * Windows builds expose TIGER only; MVSEP remains available to the existing
+ * macOS/Linux runtime and explicit research builds. `stub` is test-only. */
+export type EngineName = 'tiger' | 'mvsep' | 'stub'
 export const DEFAULT_ENGINE: EngineName = 'tiger'
 /** Human label for the active engine, if surfaced in the UI. */
 export const ENGINE_LABEL: Record<EngineName, string> = {
   tiger: 'Neural separation engine',
+  mvsep: 'Neural separation engine',
   stub: 'Band-split (stub)'
 }
 
 /** Separation quality mode.
  * - `fast` — a single quick pass.
  * - `high` — a slower multi-pass ensemble, better separation.
+ * - `max` — the legacy dual-engine blend, unavailable in public Windows builds.
  */
-export type QualityMode = 'fast' | 'high'
+export type QualityMode = 'fast' | 'high' | 'max'
+
+export type AppPlatform = 'mac' | 'windows' | 'linux'
+
+const WINDOWS_PRODUCTION_QUALITIES: readonly QualityMode[] = ['fast', 'high']
+const LEGACY_PRODUCTION_QUALITIES: readonly QualityMode[] = ['fast', 'high', 'max']
+
+/** Public Windows binaries are licensed TIGER-only; other platforms retain
+ * the upstream Max workflow until a broader licensing decision is made. */
+export function productionQualitiesForPlatform(platform: AppPlatform): readonly QualityMode[] {
+  return platform === 'windows'
+    ? WINDOWS_PRODUCTION_QUALITIES
+    : LEGACY_PRODUCTION_QUALITIES
+}
 
 export const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm'] as const
 export const AUDIO_EXTENSIONS = ['wav', 'mp3', 'aac', 'flac', 'm4a'] as const
@@ -127,7 +143,8 @@ export interface SeparateOptions {
   outputDir: string
   /** Remux original video + stems into a multitrack .mov. Video inputs only. */
   multitrackVideo: boolean
-  /** Quality tier: `fast` | `high`. Takes precedence over `highQuality`. */
+  /** Quality tier. Public Windows builds accept `fast` | `high`; existing
+   * macOS/Linux builds also accept the legacy `max` tier. */
   quality?: QualityMode
   /** Legacy toggle: slower TTA (`high`) when true. Superseded by `quality`. */
   highQuality?: boolean
@@ -157,20 +174,31 @@ export interface WorkerProbe {
   torch: string | null
   /** Engines available in this worker build. */
   engines: EngineName[]
+  /** Quality modes available in this worker build. */
+  qualities: QualityMode[]
 }
 
-/** Map a probed device to the public quality tier default. */
-export function defaultQualityForDevice(device: WorkerProbe['device']): QualityMode {
+/** Map a probed device to the quality default for the active distribution. */
+export function defaultQualityForDevice(
+  device: WorkerProbe['device'],
+  maxAvailable = true
+): QualityMode {
+  if (device === 'cuda' && maxAvailable) return 'max'
   if (device === 'cuda' || device === 'mps') return 'high'
   return 'fast'
 }
 
+export function defaultQualityForProbe(probe: WorkerProbe): QualityMode {
+  return defaultQualityForDevice(probe.device, probe.qualities.includes('max'))
+}
+
 /** Platform/app labels exposed by preload without granting Node access. */
 export interface PlatformInfo {
-  platform: 'mac' | 'windows' | 'linux'
+  platform: AppPlatform
   appName: string
   showInFolderLabel: string
   isCommunityBuild: boolean
+  productionQualities: QualityMode[]
   /** Optional derivative-build credit injected by packaging metadata. */
   maintainerCredit?: string
 }

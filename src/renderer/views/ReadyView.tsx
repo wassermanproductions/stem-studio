@@ -1,15 +1,26 @@
 import React from 'react'
 import { useStore, canSeparate } from '../store'
 import { startSeparation, formatDuration } from '../loadInput'
-import { defaultQualityForDevice, type QualityMode } from '@shared/types'
+import {
+  defaultQualityForProbe,
+  type PlatformInfo,
+  type QualityMode
+} from '@shared/types'
 
 const QUALITY_OPTIONS: { value: QualityMode; label: string; desc: string }[] = [
   { value: 'fast', label: 'Fast', desc: 'Quick single pass.' },
-  { value: 'high', label: 'High', desc: 'Multi-pass, better separation.' }
+  { value: 'high', label: 'High', desc: 'Multi-pass, better separation.' },
+  { value: 'max', label: 'Max', desc: 'Dual-engine blend, best quality — slowest.' }
 ]
 
 /** File card + options + Separate button. Also used after cancel. */
-export function ReadyView({ note }: { note?: string }): React.JSX.Element {
+export function ReadyView({
+  note,
+  platformInfo
+}: {
+  note?: string
+  platformInfo: PlatformInfo | null
+}): React.JSX.Element {
   const input = useStore((s) => s.input)
   const outputDir = useStore((s) => s.outputDir)
   const multitrackVideo = useStore((s) => s.multitrackVideo)
@@ -31,7 +42,10 @@ export function ReadyView({ note }: { note?: string }): React.JSX.Element {
   }
 
   const ready = canSeparate(status, !!input, !!outputDir)
-  const recommended = probe ? defaultQualityForDevice(probe.device) : null
+  const recommended = probe ? defaultQualityForProbe(probe) : null
+  const qualityOptions = platformInfo
+    ? QUALITY_OPTIONS.filter((option) => platformInfo.productionQualities.includes(option.value))
+    : QUALITY_OPTIONS.filter((option) => option.value !== 'max')
 
   return (
     <div className="stage">
@@ -113,7 +127,7 @@ export function ReadyView({ note }: { note?: string }): React.JSX.Element {
         <div className="option-row">
           <label className="option-label">Quality</label>
           <div className="quality-grid" role="radiogroup" aria-label="Quality">
-            {QUALITY_OPTIONS.map((opt) => (
+            {qualityOptions.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
