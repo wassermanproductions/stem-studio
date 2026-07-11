@@ -12,5 +12,9 @@ export default defineConfig({
   // `stem-studio-mcp` bin shim; the shebang makes it executable on PATH too.
   banner: { js: '#!/usr/bin/env node' },
   splitting: false,
-  dts: false
+  dts: false,
+  // The installed app ships only mcp/dist outside ASAR. Bundle every
+  // production dependency so the bridge never relies on a sibling
+  // node_modules directory.
+  noExternal: [/.*/]
 })

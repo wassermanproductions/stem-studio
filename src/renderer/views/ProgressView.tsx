@@ -19,10 +19,12 @@ export function ProgressView(): React.JSX.Element {
   const currentIdx = stage ? stages.indexOf(stage) : -1
   const separating = stage === 'separating' || stage === 'loading'
 
-  const cancel = () => {
-    if (currentJobId) void window.stemstudio.cancel(currentJobId)
-    // Also flip UI immediately; main confirms via job:cancelled.
-    useStore.getState().finishCancelled()
+  const cancel = async () => {
+    if (!currentJobId) return
+    await window.stemstudio.cancel(currentJobId)
+    if (useStore.getState().currentJobId === currentJobId) {
+      useStore.getState().finishCancelled()
+    }
   }
 
   return (
@@ -62,7 +64,11 @@ export function ProgressView(): React.JSX.Element {
         </div>
       )}
 
-      <button className="btn-ghost btn-danger" onClick={cancel}>
+      <button
+        className="btn-ghost btn-danger"
+        disabled={!currentJobId}
+        onClick={() => void cancel()}
+      >
         Cancel
       </button>
     </div>

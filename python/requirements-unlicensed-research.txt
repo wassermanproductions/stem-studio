@@ -1,0 +1,5 @@
+# Not installed by public builds. Explicit opt-in research profile for source
+# users who have independently established rights to the MVSEP checkpoints.
+-r requirements.txt
+demucs>=4.0
+librosa>=0.10

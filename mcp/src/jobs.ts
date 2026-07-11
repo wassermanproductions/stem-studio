@@ -38,7 +38,7 @@ export interface JobSnapshot {
 
 export interface Job extends JobSnapshot {
   /** Kills the running work and marks the job cancelled. Set by the runner. */
-  cancel?: () => void
+  cancel?: () => Promise<void>
 }
 
 const TERMINAL: ReadonlySet<JobStatus> = new Set<JobStatus>([
@@ -83,7 +83,7 @@ export class JobRegistry {
   }
 
   /** Attach the cancel handle for a running job. */
-  setCancel(jobId: string, cancel: () => void): void {
+  setCancel(jobId: string, cancel: () => Promise<void>): void {
     const j = this.jobs.get(jobId)
     if (j && !isTerminal(j.status)) j.cancel = cancel
   }
@@ -129,12 +129,12 @@ export class JobRegistry {
    * Returns the resulting status ('cancelled', or the existing terminal status
    * if it already finished, or null if unknown).
    */
-  cancel(jobId: string): JobStatus | null {
+  async cancel(jobId: string): Promise<JobStatus | null> {
     const j = this.jobs.get(jobId)
     if (!j) return null
     if (isTerminal(j.status)) return j.status
     try {
-      j.cancel?.()
+      await j.cancel?.()
     } catch {
       /* best effort */
     }

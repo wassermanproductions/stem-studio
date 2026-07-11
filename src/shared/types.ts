@@ -15,25 +15,21 @@ export const ENGINE_SAMPLE_RATE = 44_100
 export const OUTPUT_SAMPLE_RATE = 48_000
 export const OUTPUT_BIT_DEPTH = 24
 
-/** Separation engine module the worker runs. `tiger` and `mvsep` are the two
- * neural separation engines; `stub` is a dependency-light band-splitter (no
- * torch) used for tests and torch-free environments. The names are the worker's
- * `--engine` flag values. */
-export type EngineName = 'tiger' | 'mvsep' | 'stub'
+/** Internal worker engines. The app itself always invokes licensed TIGER;
+ * `stub` exists solely for the repository test harness. */
+export type EngineName = 'tiger' | 'stub'
 export const DEFAULT_ENGINE: EngineName = 'tiger'
 /** Human label for the active engine, if surfaced in the UI. */
 export const ENGINE_LABEL: Record<EngineName, string> = {
   tiger: 'Neural separation engine',
-  mvsep: 'Neural separation engine',
   stub: 'Band-split (stub)'
 }
 
 /** Separation quality mode.
  * - `fast` — a single quick pass.
  * - `high` — a slower multi-pass ensemble, better separation.
- * - `max`  — a dual-engine blend for best quality; slowest. Implies both
- *   neural engines regardless of `--engine`. */
-export type QualityMode = 'fast' | 'high' | 'max'
+ */
+export type QualityMode = 'fast' | 'high'
 
 export const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm'] as const
 export const AUDIO_EXTENSIONS = ['wav', 'mp3', 'aac', 'flac', 'm4a'] as const
@@ -131,8 +127,7 @@ export interface SeparateOptions {
   outputDir: string
   /** Remux original video + stems into a multitrack .mov. Video inputs only. */
   multitrackVideo: boolean
-  /** Quality tier: `fast` | `high` | `max`. Takes precedence over
-   * `highQuality` when set. `max` blends the two neural engines. */
+  /** Quality tier: `fast` | `high`. Takes precedence over `highQuality`. */
   quality?: QualityMode
   /** Legacy toggle: slower TTA (`high`) when true. Superseded by `quality`. */
   highQuality?: boolean
@@ -164,12 +159,20 @@ export interface WorkerProbe {
   engines: EngineName[]
 }
 
-/** Map a probed device to the quality tier we default the UI to:
- * cuda → max, mps → high, cpu → fast. */
+/** Map a probed device to the public quality tier default. */
 export function defaultQualityForDevice(device: WorkerProbe['device']): QualityMode {
-  if (device === 'cuda') return 'max'
-  if (device === 'mps') return 'high'
+  if (device === 'cuda' || device === 'mps') return 'high'
   return 'fast'
+}
+
+/** Platform/app labels exposed by preload without granting Node access. */
+export interface PlatformInfo {
+  platform: 'mac' | 'windows' | 'linux'
+  appName: string
+  showInFolderLabel: string
+  isCommunityBuild: boolean
+  /** Optional derivative-build credit injected by packaging metadata. */
+  maintainerCredit?: string
 }
 
 /** State of the Python environment, reported before/after setup. */

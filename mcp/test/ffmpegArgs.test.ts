@@ -105,10 +105,16 @@ describe('remuxMultitrackArgs', () => {
       'pcm_s24le',
       '-metadata:s:a:0',
       'title=Dialogue',
+      '-metadata:s:a:0',
+      'handler_name=Dialogue',
       '-metadata:s:a:1',
       'title=Music',
+      '-metadata:s:a:1',
+      'handler_name=Music',
       '-metadata:s:a:2',
       'title=SFX',
+      '-metadata:s:a:2',
+      'handler_name=SFX',
       '/o/base_STEMS.mov'
     ])
   })

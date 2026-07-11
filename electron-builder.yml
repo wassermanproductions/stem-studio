@@ -1,17 +1,29 @@
 appId: com.wassermanproductions.stemstudio
 productName: Stem Studio
+artifactName: Stem-Studio-${version}-${os}-${arch}.${ext}
+afterPack: scripts/after-pack.mjs
 directories:
   output: release
 files:
   - out/**
   - package.json
-# The Python worker ships as source; the app builds its own venv at runtime
-# under userData. Bundle the worker + requirements so first-run setup works.
 extraResources:
   - from: python
     to: python
-asarUnpack:
-  - '**/*.py'
+  - from: mcp/dist
+    to: mcp
+  - from: LICENSE
+    to: LICENSE
+  - from: NOTICE
+    to: NOTICE
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+  - from: FFMPEG_SOURCE_OFFER.md
+    to: FFMPEG_SOURCE_OFFER.md
+  - from: MODIFICATIONS.md
+    to: MODIFICATIONS.md
+  - from: assets-manifest.json
+    to: assets-manifest.json
 mac:
   category: public.app-category.music
   icon: build/icon.icns
@@ -24,8 +36,29 @@ mac:
   # distribution beyond your own machines, set identity + notarize (Apple
   # Developer ID) — see README "Sharing builds".
   identity: null
+  extraResources:
+    - from: build/runtime/macos-arm64
+      to: runtime-bootstrap/macos-arm64
 win:
-  target: nsis
+  icon: build/icon.ico
+  executableName: Stem Studio
+  requestedExecutionLevel: asInvoker
+  target:
+    - target: nsis
+      arch: [x64]
+  extraResources:
+    - from: build/runtime/windows
+      to: runtime-bootstrap/windows
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Stem Studio
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
 linux:
   # Built for the NVIDIA DGX Spark (DGX OS / Ubuntu, arm64). AppImage runs
   # anywhere; the .deb installs on Debian/Ubuntu-based distros.

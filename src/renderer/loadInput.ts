@@ -32,14 +32,21 @@ export async function loadFromPath(path: string): Promise<string | null> {
 export async function startSeparation(): Promise<void> {
   const s = useStore.getState()
   if (!s.input || !s.outputDir) return
-  s.beginSeparate()
-  await window.stemstudio.separate({
+  const jobId = crypto.randomUUID()
+  s.beginSeparate(jobId)
+  const accepted = await window.stemstudio.separate(jobId, {
     inputPath: s.input.path,
     outputDir: s.outputDir,
     multitrackVideo: s.multitrackVideo && s.input.hasVideo,
     quality: s.quality,
     polishDialogue: s.polishDialogue
   })
+  if (!accepted.ok && useStore.getState().currentJobId === jobId) {
+    useStore.getState().finishError({
+      jobId,
+      message: accepted.error ?? 'Could not start separation.'
+    })
+  }
 }
 
 /** Probe the worker's device stack and store it (defaults the quality tier).

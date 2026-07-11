@@ -5,8 +5,7 @@ import { defaultQualityForDevice, type QualityMode } from '@shared/types'
 
 const QUALITY_OPTIONS: { value: QualityMode; label: string; desc: string }[] = [
   { value: 'fast', label: 'Fast', desc: 'Quick single pass.' },
-  { value: 'high', label: 'High', desc: 'Multi-pass, better separation.' },
-  { value: 'max', label: 'Max', desc: 'Dual-engine blend, best quality — slowest.' }
+  { value: 'high', label: 'High', desc: 'Multi-pass, better separation.' }
 ]
 
 /** File card + options + Separate button. Also used after cancel. */

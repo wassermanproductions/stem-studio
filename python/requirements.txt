@@ -12,8 +12,8 @@ torchaudio>=2.2
 huggingface_hub>=0.24
 safetensors>=0.4
 
-# MVSEP-CDX23 second engine (HTDemucs-based DnR). demucs is MIT-licensed and
-# pulls in librosa; the MVSEP checkpoints themselves download at runtime.
+# Preserve the existing macOS/Linux source environment. These packages are not
+# present in either public Windows lock, whose production engine is TIGER.
 demucs>=4.0
 librosa>=0.10
 

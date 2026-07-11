@@ -35,17 +35,6 @@ describe('workerArgs', () => {
     expect(a).toEqual(expect.arrayContaining(['--engine', 'stub']))
   })
 
-  it('supports the mvsep engine and max quality', () => {
-    const a = workerArgs({
-      inputWav: '/i.wav',
-      outDir: '/o',
-      engine: 'mvsep',
-      quality: 'max'
-    })
-    expect(a).toEqual(expect.arrayContaining(['--engine', 'mvsep']))
-    expect(a).toEqual(expect.arrayContaining(['--quality', 'max']))
-  })
-
   it('adds --polish-dialogue only when requested', () => {
     const on = workerArgs({ inputWav: '/i.wav', outDir: '/o', polishDialogue: true })
     expect(on).toContain('--polish-dialogue')

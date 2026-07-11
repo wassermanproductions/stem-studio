@@ -1,0 +1,10 @@
+# Public Windows runtime. uv compiles this separately for the CPU release gate
+# and the opt-in CUDA 12.8 profile; both outputs are fully pinned and hashed.
+numpy>=1.24
+scipy>=1.10
+soundfile>=0.12
+torch==2.11.0
+torchaudio==2.11.0
+huggingface_hub>=0.24
+safetensors>=0.4
+noisereduce>=3.0

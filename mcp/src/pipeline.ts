@@ -37,8 +37,8 @@ export interface SeparateParams {
   inputPath: string
   /** Output dir; defaults to the input's directory. */
   outputDir?: string
-  quality?: string
-  engine?: string
+  quality?: 'fast' | 'high'
+  engine?: 'tiger' | 'stub'
   /** Remux original video + stems into a multitrack .mov (video inputs only). */
   multitrackVideo?: boolean
   /** Optional post-separation pass to reduce music/effects bleed in dialogue. */
@@ -52,7 +52,7 @@ export interface PipelineCallbacks {
 /** A running pipeline that can be cancelled (kills the worker, cleans temp). */
 export interface PipelineHandle {
   result: Promise<SeparationOutputs>
-  cancel(): void
+  cancel(): Promise<void>
 }
 
 /**
@@ -65,25 +65,32 @@ export function startSeparation(
   env: NodeJS.ProcessEnv = process.env
 ): PipelineHandle {
   let cancelled = false
-  let worker: ChildProcess | undefined
+  const children = new Set<ChildProcess>()
   const jobDir = join(tmpdir(), 'stem-studio-mcp', randomUUID())
+  const deliveryPaths = new Set<string>()
 
-  const cancel = () => {
+  let result!: Promise<SeparationOutputs>
+  const cancel = async () => {
     cancelled = true
-    killTree(worker)
-    void rm(jobDir, { recursive: true, force: true }).catch(() => {})
+    await Promise.all([...children].map((child) => killTree(child)))
+    await result.catch(() => {})
   }
   const checkCancel = () => {
     if (cancelled) throw new Error('Cancelled')
   }
 
-  const result = (async (): Promise<SeparationOutputs> => {
+  result = (async (): Promise<SeparationOutputs> => {
     const stage = (s: PipelineStage, pct: number, detail?: string) =>
       cb.onStage?.(s, pct, detail)
     try {
       await mkdir(jobDir, { recursive: true })
 
-      const info = await probe(params.inputPath)
+      const processHooks = {
+        onSpawn: (child: ChildProcess) => children.add(child),
+        onExit: (child: ChildProcess) => children.delete(child),
+        isCancelled: () => cancelled
+      }
+      const info = await probe(params.inputPath, processHooks)
       checkCancel()
       const base = basename(params.inputPath, extname(params.inputPath))
       const outputDir = params.outputDir ?? dirname(params.inputPath)
@@ -93,7 +100,7 @@ export function startSeparation(
       // 1) Extract/normalize to engine-rate stereo WAV.
       stage('extracting', -1)
       const inputWav = join(jobDir, 'input.wav')
-      await runFfmpeg(ffmpeg, extractAudioArgs(params.inputPath, inputWav))
+      await runFfmpeg(ffmpeg, extractAudioArgs(params.inputPath, inputWav), processHooks)
       checkCancel()
 
       // 2) Run the worker; stream its line-JSON progress.
@@ -117,8 +124,9 @@ export function startSeparation(
           onProgress: (s, pct) => stage(s, pct)
         }
       })
-      worker = handle.child
+      children.add(handle.child)
       const workerOutputs = await handle.result
+      children.delete(handle.child)
       checkCancel()
 
       // 3) Convert each stem to 48 kHz / 24-bit delivery WAV.
@@ -131,7 +139,8 @@ export function startSeparation(
         const src = workerOutputs[workerKey]
         if (!src) throw new Error(`Worker did not produce stem "${workerKey}"`)
         const dest = join(outputDir, `${base}_${STEM_SUFFIX[kind]}.wav`)
-        await runFfmpeg(ffmpeg, convertStemArgs(src, dest))
+        deliveryPaths.add(dest)
+        await runFfmpeg(ffmpeg, convertStemArgs(src, dest), processHooks)
         stems[kind] = dest
         done++
         stage('writing', (done / (workerKeys.length + 1)) * 100)
@@ -140,7 +149,8 @@ export function startSeparation(
 
       // 3b) Deliver the conformed original mix (the "married" reference track).
       const married = join(outputDir, `${base}_${MARRIED_SUFFIX}.wav`)
-      await runFfmpeg(ffmpeg, marriedMixArgs(params.inputPath, married))
+      deliveryPaths.add(married)
+      await runFfmpeg(ffmpeg, marriedMixArgs(inputWav, married), processHooks)
       stage('writing', 100)
       checkCancel()
 
@@ -149,9 +159,11 @@ export function startSeparation(
       if (params.multitrackVideo && info.hasVideo) {
         stage('remuxing', -1)
         multitrackVideo = join(outputDir, `${base}_STEMS.mov`)
+        deliveryPaths.add(multitrackVideo)
         await runFfmpeg(
           ffmpeg,
-          remuxMultitrackArgs(params.inputPath, stems, multitrackVideo)
+          remuxMultitrackArgs(params.inputPath, stems, multitrackVideo),
+          processHooks
         )
         checkCancel()
       }
@@ -160,6 +172,8 @@ export function startSeparation(
       stage('done', 100)
       return { stems, married, multitrackVideo, outputDir }
     } catch (err) {
+      await Promise.all([...children].map((child) => killTree(child)))
+      await Promise.all([...deliveryPaths].map((path) => rm(path, { force: true }).catch(() => {})))
       await rm(jobDir, { recursive: true, force: true }).catch(() => {})
       throw err
     }

@@ -12,16 +12,12 @@ export const ENGINE_SAMPLE_RATE = 44_100
 export const OUTPUT_SAMPLE_RATE = 48_000
 export const OUTPUT_BIT_DEPTH = 24
 
-/**
- * Separation engines. `tiger` is the real TIGER-DnR ML model; `stub` is the
- * torch-free band-splitter. `mvsep` may be added by a concurrent worker change
- * and is passed through without hard validation — the worker is the authority.
- */
-export type EngineName = 'tiger' | 'stub' | 'mvsep'
+/** Internal execution engines. `stub` is enabled only by the test harness. */
+export type EngineName = 'tiger' | 'stub'
 export const DEFAULT_ENGINE: EngineName = 'tiger'
 
-/** Quality modes. `max` may be added by a concurrent worker change; passed through. */
-export type QualityMode = 'fast' | 'high' | 'max'
+/** Public quality modes. */
+export type QualityMode = 'fast' | 'high'
 export const DEFAULT_QUALITY: QualityMode = 'fast'
 
 /** The three delivery stems, in canonical order. */

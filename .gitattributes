@@ -1,0 +1,9 @@
+# Reproducible checksums and patches across Windows/macOS checkouts.
+*.patch text eol=lf
+*.lock text eol=lf
+*.json text eol=lf
+*.mjs text eol=lf
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.yml text eol=lf

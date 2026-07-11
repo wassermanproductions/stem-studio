@@ -5,7 +5,8 @@
  * probe /opt/homebrew/bin first, then fall back to PATH.
  */
 
-import { spawn } from 'child_process'
+import { app } from 'electron'
+import { spawn, type ChildProcess } from 'child_process'
 import { access } from 'fs/promises'
 import { constants } from 'fs'
 import { probeArgs } from '../shared/ffmpegArgs'
@@ -15,6 +16,8 @@ import {
   type ProbeResult
 } from '../shared/types'
 import { basename, extname } from 'path'
+import { join } from 'path'
+import { childSpawnOptions, trackProcess } from './process'
 
 async function firstExisting(paths: string[]): Promise<string | null> {
   for (const p of paths) {
@@ -29,7 +32,19 @@ async function firstExisting(paths: string[]): Promise<string | null> {
 }
 
 async function resolveTool(bin: 'ffmpeg' | 'ffprobe'): Promise<string> {
+  const override = bin === 'ffmpeg' ? process.env.STEMSTUDIO_FFMPEG : process.env.STEMSTUDIO_FFPROBE
+  const executable = process.platform === 'win32' ? `${bin}.exe` : bin
+  const packagedDirectory = process.platform === 'win32'
+    ? 'windows'
+    : process.platform === 'darwin'
+      ? 'macos-arm64'
+      : null
+  const packaged = app.isPackaged && packagedDirectory
+    ? join(process.resourcesPath, 'runtime-bootstrap', packagedDirectory, executable)
+    : null
   const found = await firstExisting([
+    ...(override ? [override] : []),
+    ...(packaged ? [packaged] : []),
     `/opt/homebrew/bin/${bin}`,
     `/usr/local/bin/${bin}`,
     `/usr/bin/${bin}`
@@ -45,18 +60,31 @@ export async function ffprobePath(): Promise<string> {
   return resolveTool('ffprobe')
 }
 
+export interface ProcessHooks {
+  onSpawn?(child: ChildProcess): void
+  onExit?(child: ChildProcess): void
+  isCancelled?(): boolean
+}
+
 /** Run ffmpeg with the given args; reject with stderr on non-zero exit. */
-export function runFfmpeg(bin: string, args: string[]): Promise<void> {
+export function runFfmpeg(bin: string, args: string[], hooks: ProcessHooks = {}): Promise<void> {
   return new Promise((res, rej) => {
-    const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    const child = trackProcess(spawn(
+      bin,
+      args,
+      childSpawnOptions({ stdio: ['ignore', 'ignore', 'pipe'] })
+    ))
+    hooks.onSpawn?.(child)
     let err = ''
-    child.stderr.on('data', (b) => {
+    child.stderr?.on('data', (b) => {
       err += b.toString()
     })
     child.on('error', rej)
     child.on('close', (code) => {
+      hooks.onExit?.(child)
+      if (hooks.isCancelled?.()) return rej(new Error('Cancelled'))
       if (code === 0) res()
-      else rej(new Error(`ffmpeg exited ${code}\n${err.slice(-4000)}`))
+      else rej(new Error(`Media encoder exited ${code}\n${err.slice(-4000)}`))
     })
   })
 }
@@ -73,18 +101,23 @@ interface FfprobeJson {
 }
 
 /** Probe an input file into a ProbeResult. */
-export async function probe(inputPath: string): Promise<ProbeResult> {
+export async function probe(inputPath: string, hooks: ProcessHooks = {}): Promise<ProbeResult> {
   const bin = await ffprobePath()
   const json = await new Promise<FfprobeJson>((res, rej) => {
-    const child = spawn(bin, probeArgs(inputPath), {
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
+    const child = trackProcess(spawn(
+      bin,
+      probeArgs(inputPath),
+      childSpawnOptions({ stdio: ['ignore', 'pipe', 'pipe'] })
+    ))
+    hooks.onSpawn?.(child)
     let out = ''
     let err = ''
-    child.stdout.on('data', (b) => (out += b.toString()))
-    child.stderr.on('data', (b) => (err += b.toString()))
+    child.stdout?.on('data', (b) => (out += b.toString()))
+    child.stderr?.on('data', (b) => (err += b.toString()))
     child.on('error', rej)
     child.on('close', (code) => {
+      hooks.onExit?.(child)
+      if (hooks.isCancelled?.()) return rej(new Error('Cancelled'))
       if (code !== 0) return rej(new Error(`ffprobe failed: ${err.slice(-2000)}`))
       try {
         res(JSON.parse(out) as FfprobeJson)

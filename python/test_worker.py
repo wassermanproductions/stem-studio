@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from contextlib import nullcontext
 
 import numpy as np
 import soundfile as sf
@@ -33,12 +34,24 @@ def make_tone(path: str, sr: int = 44_100, dur: float = 5.0) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory() as d:
-        tone = os.path.join(d, "tone.wav")
-        outdir = os.path.join(d, "out")
+    requested_root = os.environ.get("STEMSTUDIO_TEST_ROOT")
+    workspace = (
+        nullcontext(os.path.abspath(requested_root))
+        if requested_root
+        else tempfile.TemporaryDirectory()
+    )
+    with workspace as root:
+        d = os.path.join(root, "OneDrive - Studio", "Director's Cut", "场景 Assets")
+        os.makedirs(d, exist_ok=True)
+        tone = os.path.join(d, "Married Mix '01' 场景.wav")
+        outdir = os.path.join(d, "Output Stems 'Final' 场景")
         make_tone(tone)
 
-        env = dict(os.environ, PYTHONPATH=HERE)
+        env = dict(
+            os.environ,
+            PYTHONPATH=HERE,
+            STEMSTUDIO_ENABLE_TEST_ENGINES="1",
+        )
         # Use the stub engine so this e2e test runs without torch installed.
         proc = subprocess.run(
             [sys.executable, "-m", "stemstudio_worker.separate",

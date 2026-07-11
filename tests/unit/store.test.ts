@@ -90,8 +90,9 @@ describe('store state machine', () => {
   it('ready -> extracting -> separating -> writing -> done', () => {
     const st = useStore.getState()
     st.setInput(videoInput, '/out')
-    st.beginSeparate()
+    st.beginSeparate('j1')
     expect(useStore.getState().status).toBe('extracting')
+    expect(useStore.getState().currentJobId).toBe('j1')
 
     st.applyProgress({ jobId: 'j1', stage: 'separating', percent: 40 })
     expect(useStore.getState().status).toBe('separating')
@@ -114,7 +115,7 @@ describe('store state machine', () => {
   it('captures errors with detail', () => {
     const st = useStore.getState()
     st.setInput(videoInput, '/out')
-    st.beginSeparate()
+    st.beginSeparate('j1')
     st.finishError({ jobId: 'j1', message: 'worker died', detail: 'stack…' })
     expect(useStore.getState().status).toBe('error')
     expect(useStore.getState().error?.message).toBe('worker died')
@@ -123,7 +124,7 @@ describe('store state machine', () => {
   it('handles cancellation', () => {
     const st = useStore.getState()
     st.setInput(videoInput, '/out')
-    st.beginSeparate()
+    st.beginSeparate('j1')
     st.finishCancelled()
     expect(useStore.getState().status).toBe('cancelled')
     expect(useStore.getState().currentJobId).toBeNull()
@@ -139,8 +140,8 @@ describe('store state machine', () => {
 
   it('defaults quality to fast and lets the user change it', () => {
     expect(useStore.getState().quality).toBe('fast')
-    useStore.getState().setQuality('max')
-    expect(useStore.getState().quality).toBe('max')
+    useStore.getState().setQuality('high')
+    expect(useStore.getState().quality).toBe('high')
   })
 
   it('preserves the quality preference across setInput and reset', () => {
@@ -167,15 +168,15 @@ describe('store state machine', () => {
     expect(useStore.getState().polishDialogue).toBe(true)
   })
 
-  it('applyProbe defaults the quality tier from the device (cuda→max)', () => {
+  it('applyProbe defaults the quality tier from the device (cuda→high)', () => {
     useStore.getState().applyProbe({
       device: 'cuda',
       cuda: true,
       mps: false,
       torch: '2.6.0',
-      engines: ['tiger', 'mvsep', 'stub']
+      engines: ['tiger', 'stub']
     })
-    expect(useStore.getState().quality).toBe('max')
+    expect(useStore.getState().quality).toBe('high')
     expect(useStore.getState().probe?.device).toBe('cuda')
   })
 
@@ -187,7 +188,7 @@ describe('store state machine', () => {
       cuda: true,
       mps: false,
       torch: '2.6.0',
-      engines: ['tiger', 'mvsep', 'stub']
+      engines: ['tiger', 'stub']
     })
     expect(useStore.getState().quality).toBe('fast')
   })

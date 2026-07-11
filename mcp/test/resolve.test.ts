@@ -8,7 +8,10 @@ import {
   workerPythonPath,
   defaultVenvPython,
   modelCacheDir,
-  systemPythonCandidates
+  systemPythonCandidates,
+  resourcesRoot,
+  distributionUserDataFolder,
+  windowsRequirementsPath
 } from '../src/resolve.js'
 
 describe('ffmpegToolCandidates', () => {
@@ -18,6 +21,24 @@ describe('ffmpegToolCandidates', () => {
       '/usr/bin/ffprobe',
       '/usr/local/bin/ffprobe'
     ])
+  })
+})
+
+describe('distributionUserDataFolder', () => {
+  it('uses the neutral generic fallback', () => {
+    expect(distributionUserDataFolder({}, null)).toBe('stem-studio')
+  })
+
+  it('honors an explicit launcher contract', () => {
+    expect(
+      distributionUserDataFolder({ STEMSTUDIO_USER_DATA_FOLDER: 'stem-studio-partner' }, null)
+    ).toBe('stem-studio-partner')
+  })
+
+  it('rejects separators and traversal', () => {
+    expect(() =>
+      distributionUserDataFolder({ STEMSTUDIO_USER_DATA_FOLDER: '../escape' }, null)
+    ).toThrow('Invalid STEMSTUDIO_USER_DATA_FOLDER')
   })
 })
 
@@ -37,6 +58,15 @@ describe('workerRoot', () => {
   it('is <repo>/python', () => {
     expect(workerRoot({ STEMSTUDIO_ROOT: '/r' })).toBe('/r/python')
   })
+
+  it('shares the installed app resources when provided', () => {
+    const env = { STEMSTUDIO_RESOURCES: '/app/resources' }
+    expect(resourcesRoot(env)).toBe('/app/resources')
+    expect(workerRoot(env)).toBe('/app/resources/python')
+    expect(windowsRequirementsPath('cpu', env)).toBe(
+      '/app/resources/python/requirements-windows-cpu.lock'
+    )
+  })
 })
 
 describe('workerPythonPath / defaultVenvPython', () => {
@@ -49,6 +79,16 @@ describe('workerPythonPath / defaultVenvPython', () => {
     if (process.platform === 'win32') return
     expect(workerPythonPath({ STEMSTUDIO_ROOT: '/r' })).toBe('/r/.venv/bin/python')
     expect(defaultVenvPython({ STEMSTUDIO_ROOT: '/r' })).toBe('/r/.venv/bin/python')
+  })
+
+  it('shares the packaged Electron venv outside Windows', () => {
+    if (process.platform === 'win32') return
+    const env = { STEMSTUDIO_RESOURCES: '/app/resources' }
+    const expectedRoot = process.platform === 'darwin'
+      ? join(homedir(), 'Library', 'Application Support', 'stem-studio')
+      : join(homedir(), '.config', 'stem-studio')
+    expect(defaultVenvPython(env)).toBe(join(expectedRoot, 'venv', 'bin', 'python'))
+    expect(modelCacheDir(env)).toBe(join(expectedRoot, 'models'))
   })
 })
 

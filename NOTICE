@@ -27,14 +27,15 @@ TIGER-DnR (model weights)
   License: Apache-2.0
 
 demucs (library)
-  The MVSEP-CDX23 engine runs its HTDemucs checkpoints through the demucs
-  library (a pip dependency, not vendored).
+  Research-only MVSEP source can run HTDemucs checkpoints through demucs.
+  Public Windows dependency locks do not install it; the existing macOS/Linux
+  source environment remains unchanged.
   Source:  https://github.com/adefossez/demucs
   License: MIT
 
 MVSEP-CDX23 (model weights)
-  The MVSEP-CDX23 "Cinematic Sound Demixing" checkpoints (HTDemucs-based DnR)
-  used by the "Max" quality tier are downloaded at runtime from the project's
-  GitHub Releases (not distributed with this source). Used for personal use.
+  Source for an experimental adapter remains in the repository, but public
+  builds do not install, download, or expose this engine or the Max tier because
+  the checkpoint repository does not state an adequate model license.
   Source:  https://github.com/ZFTurbo/MVSEP-CDX23-Cinematic-Sound-Demixing
   Author:  Roman Solovyev (ZFTurbo)

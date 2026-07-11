@@ -6,19 +6,42 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'
-import { access, mkdir } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import {
+  access,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  statfs,
+  writeFile
+} from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import {
   workerPythonPath,
   workerRoot,
   modelCacheDir,
   systemPythonCandidates,
-  defaultVenvPython
+  defaultVenvPython,
+  userDataRoot,
+  uvPath,
+  windowsRequirementsPath
 } from './resolve.js'
 import { workerProbeArgs } from './workerArgs.js'
+import { childSpawnOptions, killTree, trackProcess } from './process.js'
+
+const WINDOWS_PYTHON_VERSION = '3.12.10'
+const WINDOWS_UV_VERSION = '0.11.28'
+const WINDOWS_MIN_FREE_BYTES = 6 * 1024 ** 3
+
+interface ProcessControl {
+  onSpawn?(child: ChildProcess): void
+  onExit?(child: ChildProcess): void
+  isCancelled?(): boolean
+}
 
 /** Structured readiness report returned by setup_status. */
 export interface SetupStatus {
@@ -52,15 +75,18 @@ async function fileExists(p: string): Promise<boolean> {
 function capture(
   cmd: string,
   args: string[],
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  control: ProcessControl = {}
 ): Promise<{ code: number | null; out: string; err: string }> {
   return new Promise((resolve) => {
     let child: ChildProcess
     try {
-      child = spawn(cmd, args, {
+      child = trackProcess(spawn(cmd, args, {
         env,
+        windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
-      })
+      }))
+      control.onSpawn?.(child)
     } catch (e) {
       return resolve({ code: -1, out: '', err: (e as Error).message })
     }
@@ -69,7 +95,10 @@ function capture(
     child.stdout?.on('data', (b: Buffer) => (out += b.toString()))
     child.stderr?.on('data', (b: Buffer) => (err += b.toString()))
     child.on('error', (e) => resolve({ code: -1, out, err: err + e.message }))
-    child.on('close', (code) => resolve({ code, out, err }))
+    child.on('close', (code) => {
+      control.onExit?.(child)
+      resolve({ code: control.isCancelled?.() ? -1 : code, out, err })
+    })
   })
 }
 
@@ -138,6 +167,41 @@ export async function setupStatus(
     }
   }
 
+  if (process.platform === 'win32' && !env.STEMSTUDIO_PYTHON?.trim()) {
+    try {
+      const manifest = JSON.parse(
+        await readFile(join(userDataRoot(env), 'runtime', 'v1', 'ready.json'), 'utf8')
+      ) as {
+        schema?: number
+        pythonVersion?: string
+        uvVersion?: string
+        profile?: 'cpu' | 'cuda'
+        requirementsSha256?: string
+      }
+      if (
+        manifest.schema !== 1 ||
+        manifest.pythonVersion !== WINDOWS_PYTHON_VERSION ||
+        manifest.uvVersion !== WINDOWS_UV_VERSION ||
+        !manifest.profile
+      ) throw new Error('invalid manifest')
+      const actual = createHash('sha256')
+        .update(await readFile(windowsRequirementsPath(manifest.profile, env)))
+        .digest('hex')
+      if (actual !== manifest.requirementsSha256) throw new Error('dependency lock changed')
+    } catch {
+      return {
+        ready: false,
+        pythonPath: py,
+        pythonExists: true,
+        depsImportable: false,
+        modelCacheDir: cache,
+        modelCachePresent,
+        deviceSource: 'unavailable',
+        message: 'The private runtime is incomplete or stale. Run setup_environment to repair it.'
+      }
+    }
+  }
+
   const imp = await capture(
     py,
     ['-c', 'import torch, numpy, soundfile'],
@@ -166,7 +230,7 @@ export async function setupStatus(
 /** A running setup that can be cancelled. */
 export interface SetupHandle {
   result: Promise<{ pythonPath: string }>
-  cancel(): void
+  cancel(): Promise<void>
 }
 
 export interface SetupCallbacks {
@@ -179,15 +243,15 @@ function runStreaming(
   args: string[],
   env: NodeJS.ProcessEnv,
   onLine: (line: string) => void,
-  register: (child: ChildProcess) => void
+  control: ProcessControl
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, {
-      env,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-    register(child)
+    const child = trackProcess(spawn(
+      cmd,
+      args,
+      childSpawnOptions({ env, stdio: ['ignore', 'pipe', 'pipe'] })
+    ))
+    control.onSpawn?.(child)
     const forward = (buf: Buffer) => {
       for (const line of buf.toString().split('\n')) {
         const t = line.trim()
@@ -198,7 +262,9 @@ function runStreaming(
     child.stderr?.on('data', forward)
     child.on('error', reject)
     child.on('close', (code) => {
-      if (code === 0) resolve()
+      control.onExit?.(child)
+      if (control.isCancelled?.()) reject(new Error('Cancelled'))
+      else if (code === 0) resolve()
       else reject(new Error(`${cmd} ${args.join(' ')} exited with code ${code}`))
     })
   })
@@ -206,13 +272,15 @@ function runStreaming(
 
 /** Detect a system python3 >= 3.10 to bootstrap the venv from. */
 async function detectSystemPython(
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
+  control: ProcessControl = {}
 ): Promise<string | null> {
   for (const cand of systemPythonCandidates(env)) {
     const ok = await capture(
       cand,
       ['-c', 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'],
-      env
+      env,
+      control
     )
     if (ok.code === 0) return cand
   }
@@ -229,31 +297,28 @@ export function startSetup(
   cb: SetupCallbacks = {}
 ): SetupHandle {
   let cancelled = false
-  let child: ChildProcess | undefined
-  const register = (c: ChildProcess) => {
-    child = c
+  const children = new Set<ChildProcess>()
+  const control: ProcessControl = {
+    onSpawn: (child) => children.add(child),
+    onExit: (child) => children.delete(child),
+    isCancelled: () => cancelled
   }
-  const cancel = () => {
+  let result!: Promise<{ pythonPath: string }>
+  const cancel = async () => {
     cancelled = true
-    if (child?.pid) {
-      try {
-        process.kill(-child.pid, 'SIGKILL')
-      } catch {
-        try {
-          child.kill('SIGKILL')
-        } catch {
-          /* gone */
-        }
-      }
-    }
+    await Promise.all([...children].map((child) => killTree(child)))
+    await result.catch(() => {})
   }
   const checkCancel = () => {
     if (cancelled) throw new Error('Cancelled')
   }
   const emit = (d: string) => cb.onProgress?.(d)
 
-  const result = (async (): Promise<{ pythonPath: string }> => {
-    const sysPython = await detectSystemPython(env)
+  result = (async (): Promise<{ pythonPath: string }> => {
+    if (process.platform === 'win32') {
+      return setupWindowsEnvironment(env, emit, control, checkCancel)
+    }
+    const sysPython = await detectSystemPython(env, control)
     if (!sysPython) {
       throw new Error(
         'No suitable Python found. Install Python 3.10+ (e.g. `brew install python`).'
@@ -265,11 +330,11 @@ export function startSetup(
     // When STEMSTUDIO_PYTHON points at an existing python we still (re)create
     // that venv dir; normally this is <repo>/.venv.
     const targetPy = defaultVenvPython(env)
-    const venvDir = join(targetPy, '..', '..') // <venv>/bin/python -> <venv>
+    const venvDir = dirname(dirname(targetPy))
 
     if (!(await fileExists(targetPy))) {
       emit('Creating Python environment…')
-      await runStreaming(sysPython, ['-m', 'venv', venvDir], env, emit, register)
+      await runStreaming(sysPython, ['-m', 'venv', venvDir], env, emit, control)
     }
     checkCancel()
 
@@ -279,7 +344,7 @@ export function startSetup(
       ['-m', 'pip', 'install', '--upgrade', 'pip'],
       env,
       emit,
-      register
+      control
     )
     checkCancel()
 
@@ -293,15 +358,17 @@ export function startSetup(
       ['-m', 'pip', 'install', '-r', req],
       env,
       emit,
-      register
+      control
     )
     checkCancel()
 
     const verify = await capture(
       targetPy,
       ['-c', 'import torch, numpy, soundfile'],
-      env
+      env,
+      control
     )
+    checkCancel()
     if (verify.code !== 0) {
       throw new Error(
         'Setup finished but required libraries are still missing:\n' +
@@ -314,4 +381,130 @@ export function startSetup(
   })()
 
   return { result, cancel }
+}
+
+async function setupWindowsEnvironment(
+  env: NodeJS.ProcessEnv,
+  emit: (detail: string) => void,
+  control: ProcessControl,
+  checkCancel: () => void
+): Promise<{ pythonPath: string }> {
+  const dataRoot = userDataRoot(env)
+  await mkdir(dataRoot, { recursive: true })
+  const disk = await statfs(dataRoot, { bigint: true })
+  const free = disk.bavail * disk.bsize
+  if (free < BigInt(WINDOWS_MIN_FREE_BYTES)) {
+    throw new Error(
+      `Stem Studio needs 6 GB free for its private runtime; ${Number(free / BigInt(1024 ** 3))} GB is available.`
+    )
+  }
+
+  const runtime = join(dataRoot, 'runtime', 'v1')
+  const targetPy = defaultVenvPython(env)
+  const venvDir = dirname(dirname(targetPy))
+  const ready = join(runtime, 'ready.json')
+  const uv = uvPath(env)
+  const uvEnv: NodeJS.ProcessEnv = {
+    ...env,
+    UV_PYTHON_INSTALL_DIR: join(runtime, 'python'),
+    UV_CACHE_DIR: join(runtime, 'uv-cache'),
+    UV_NO_MODIFY_PATH: '1',
+    UV_MANAGED_PYTHON: '1'
+  }
+  await mkdir(runtime, { recursive: true })
+
+  const requested = env.STEMSTUDIO_WINDOWS_PROFILE?.toLowerCase() === 'cuda'
+    ? 'cuda'
+    : 'cpu'
+
+  const install = async (profile: 'cpu' | 'cuda'): Promise<void> => {
+    const requirements = windowsRequirementsPath(profile, env)
+    await rm(ready, { force: true })
+    emit(`Installing private CPython ${WINDOWS_PYTHON_VERSION} with uv ${WINDOWS_UV_VERSION}…`)
+    await runStreaming(
+      uv,
+      ['python', 'install', WINDOWS_PYTHON_VERSION],
+      uvEnv,
+      emit,
+      control
+    )
+    checkCancel()
+    emit(`Creating the private ${profile.toUpperCase()} environment…`)
+    await runStreaming(
+      uv,
+      ['venv', '--clear', '--managed-python', '--python', WINDOWS_PYTHON_VERSION, venvDir],
+      uvEnv,
+      emit,
+      control
+    )
+    checkCancel()
+    await runStreaming(
+      uv,
+      [
+        'pip',
+        'sync',
+        '--python',
+        targetPy,
+        '--require-hashes',
+        '--torch-backend',
+        profile === 'cuda' ? 'cu128' : 'cpu',
+        requirements
+      ],
+      uvEnv,
+      emit,
+      control
+    )
+    checkCancel()
+    const verify = await capture(
+      targetPy,
+      [
+        '-c',
+        profile === 'cuda'
+          ? 'import torch,numpy,soundfile,sys; sys.exit(0 if torch.cuda.is_available() else 1)'
+          : 'import torch,numpy,soundfile'
+      ],
+      env,
+      control
+    )
+    checkCancel()
+    if (verify.code !== 0) throw new Error(verify.err || `${profile} runtime verification failed`)
+
+    const requirementsSha256 = createHash('sha256')
+      .update(await readFile(requirements))
+      .digest('hex')
+    const temporary = `${ready}.tmp-${process.pid}`
+    try {
+      await writeFile(
+        temporary,
+        `${JSON.stringify({
+          schema: 1,
+          pythonVersion: WINDOWS_PYTHON_VERSION,
+          uvVersion: WINDOWS_UV_VERSION,
+          profile,
+          requirementsSha256,
+          readyAt: new Date().toISOString()
+        }, null, 2)}\n`
+      )
+      checkCancel()
+      await rename(temporary, ready)
+    } catch (error) {
+      await rm(temporary, { force: true })
+      throw error
+    }
+  }
+
+  if (requested === 'cuda') {
+    try {
+      await install('cuda')
+    } catch (error) {
+      checkCancel()
+      emit(`CUDA setup unavailable (${(error as Error).message}); falling back to CPU.`)
+      await rm(venvDir, { recursive: true, force: true })
+      await install('cpu')
+    }
+  } else {
+    await install('cpu')
+  }
+  await mkdir(modelCacheDir(env), { recursive: true })
+  return { pythonPath: targetPy }
 }

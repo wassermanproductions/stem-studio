@@ -102,9 +102,11 @@ export function remuxMultitrackArgs(
 
   args.push('-c:v', 'copy', '-c:a', 'pcm_s24le')
 
-  // Per-output-audio-stream title metadata so an NLE shows Dialogue/Music/SFX.
+  // Write both generic title metadata and the QuickTime handler name that NLEs
+  // actually display for MOV audio tracks.
   STEMS.forEach((kind, i) => {
     args.push(`-metadata:s:a:${i}`, `title=${STEM_LABELS[kind]}`)
+    args.push(`-metadata:s:a:${i}`, `handler_name=${STEM_LABELS[kind]}`)
   })
 
   args.push(outMovPath)

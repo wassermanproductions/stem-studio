@@ -1,9 +1,7 @@
 /**
  * Pure builder for the Python separation-worker argv. Mirrors the app's
  * `src/shared/workerArgs.ts` but does NOT hard-validate the engine/quality
- * enums against today's worker: a concurrent change may add `mvsep`/`max`, so
- * whatever string the caller passes is forwarded and the worker is left to
- * accept or reject it (its stderr/error event surfaces cleanly).
+ * public enums. Research-only MVSEP/Max are deliberately absent.
  */
 
 import {
@@ -17,9 +15,9 @@ export interface WorkerArgsOptions {
   inputWav: string
   outDir: string
   /** Engine to run. Defaults to DEFAULT_ENGINE (tiger). */
-  engine?: EngineName | string
+  engine?: EngineName
   /** Quality mode. Defaults to `fast`. */
-  quality?: QualityMode | string
+  quality?: QualityMode
   /** Model-weights cache dir (tiger only). Omitted if not provided. */
   cacheDir?: string
   /** Optional post-separation pass to reduce music/effects bleed in dialogue.

@@ -25,9 +25,241 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
+  release-plan:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      windows_capable: ${{ steps.plan.outputs.windows_capable }}
+      windows_prerelease: ${{ steps.plan.outputs.windows_prerelease }}
+    steps:
+      - name: Resolve tag
+        id: target
+        run: echo "tag=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.tag }}
+      - name: Detect port-era release support
+        id: plan
+        shell: bash
+        run: |
+          tag='${{ steps.target.outputs.tag }}'
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [[ "$tag" == *-windows.* ]] && \
+            node -e "const p=require('./package.json'); process.exit(p.scripts?.['package:win'] ? 0 : 1)"; then
+            echo "windows_capable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "windows_capable=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$tag" == *-windows.* ]]; then
+            echo "windows_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "windows_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  windows-x64:
+    needs: [release-plan, windows-tiger-cpu-gate]
+    if: ${{ needs.release-plan.outputs.windows_capable == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: echo "tag=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm ci --prefix mcp
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run notices:check
+      - run: npm run package:win
+      - name: Verify packaged private runtime inputs
+        shell: pwsh
+        run: |
+          $resources = Get-ChildItem release -Recurse -Directory | Where-Object Name -eq 'resources' | Select-Object -First 1
+          if (-not $resources) { throw 'No packaged resources directory found' }
+          @(
+            'runtime-bootstrap/windows/uv.exe',
+            'runtime-bootstrap/windows/ffmpeg.exe',
+            'runtime-bootstrap/windows/ffprobe.exe',
+            'runtime-bootstrap/windows/LICENSE-FFmpeg.txt',
+            'runtime-bootstrap/windows/media-provenance.json',
+            'runtime-bootstrap/windows/LICENSE-uv-apache',
+            'python/requirements-windows-cpu.lock',
+            'mcp/index.js',
+            'mcp/package.json',
+            'mcp/stem-studio-mcp.cmd',
+            'stem-studio-distribution.json'
+          ) | ForEach-Object {
+            if (-not (Test-Path (Join-Path $resources.FullName $_))) { throw "Missing packaged resource: $_" }
+          }
+          if (Test-Path (Join-Path $resources.FullName 'runtime-bootstrap/macos-arm64')) {
+            throw 'Windows package contains the macOS media runtime'
+          }
+          node scripts/check-packaged-identity.mjs `
+            (Join-Path $resources.FullName 'stem-studio-distribution.json') `
+            build/identity.generic.json
+      - name: Unpacked runtime smoke without system FFmpeg or Python
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem release/win-unpacked -File -Filter '*.exe' |
+            Where-Object Name -NotMatch 'Uninstall' | Select-Object -First 1
+          if (-not $exe) { throw 'Unpacked executable missing' }
+          $oldPath = $env:PATH
+          try {
+            $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+            $process = Start-Process $exe.FullName -ArgumentList '--smoke-runtime' -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "Unpacked runtime smoke exited $($process.ExitCode)" }
+          } finally {
+            $env:PATH = $oldPath
+          }
+      - name: Install, launch, uninstall, and verify shortcuts/data
+        shell: pwsh
+        run: ./scripts/windows-installer-smoke.ps1
+      - run: npm run sbom:spdx
+      - run: npm run sbom:cyclonedx
+      - run: npm run sbom:enrich
+      - run: node scripts/fetch-ffmpeg-source.mjs
+
+      - name: Collect media provenance and licenses
+        shell: pwsh
+        run: |
+          Copy-Item build/runtime/windows/LICENSE-FFmpeg.txt release/FFMPEG-GPL-3.0-or-later.txt
+          Copy-Item build/runtime/windows/LICENSE-uv-apache release/UV-Apache-2.0.txt
+          Copy-Item build/runtime/windows/media-provenance.json release/windows-media-provenance.json
+          Copy-Item LICENSE release/LICENSE-Apache-2.0.txt
+          Copy-Item LICENSE release/TIGER-DnR-Apache-2.0.txt
+          Copy-Item python/stemstudio_worker/vendor/tiger/LICENSE release/TIGER-code-MIT.txt
+          Copy-Item NOTICE release/NOTICE.txt
+          Copy-Item MODIFICATIONS.md release/MODIFICATIONS.md
+          Copy-Item THIRD_PARTY_NOTICES.md release/THIRD_PARTY_NOTICES.md
+          Copy-Item FFMPEG_SOURCE_OFFER.md release/FFMPEG_SOURCE_OFFER.md
+          Copy-Item assets-manifest.json release/assets-manifest.json
+
+      - name: Write build provenance
+        run: node scripts/write-build-provenance.mjs windows-x64
+
+      - name: Write SHA256SUMS
+        shell: pwsh
+        run: |
+          Get-ChildItem release/*.exe,release/*.json,release/*.txt,release/*.md -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Add-Content release/SHA256SUMS
+          }
+
+      - name: Attest Windows installer provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release/*.exe
+
+      - name: Attach Windows release artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WINDOWS_PRERELEASE: ${{ needs.release-plan.outputs.windows_prerelease }}
+        run: |
+          if ! gh release view "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            prerelease=()
+            if [[ "$WINDOWS_PRERELEASE" == "true" ]]; then prerelease+=(--prerelease); fi
+            gh release create "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" \
+              --title "Stem Studio ${{ steps.tag.outputs.tag }}" "${prerelease[@]}" --generate-notes
+          fi
+          gh release upload "${{ steps.tag.outputs.tag }}" \
+            release/*.exe release/SHA256SUMS release/*.json release/*.txt release/*.md \
+            release/corresponding-source/* \
+            --repo "${{ github.repository }}" --clobber
+
+  windows-tiger-cpu-gate:
+    needs: release-plan
+    if: ${{ needs.release-plan.outputs.windows_capable == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: echo "tag=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix mcp
+      - run: npm run prepare:win-runtime
+      - run: node scripts/audit-media-binaries.mjs --platform windows
+      - run: npm run build --prefix mcp
+      - run: npm run build
+      - run: npx electron-builder --win dir --x64 --config electron-builder.yml --publish never
+
+      - name: Provision pinned CPU runtime and run licensed TIGER gate
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "OneDrive - Studio\Director's Cut\场景 TIGER Gate"
+          $resources = Join-Path $PWD 'release/win-unpacked/resources'
+          $descriptor = Get-Content (Join-Path $resources 'stem-studio-distribution.json') -Raw | ConvertFrom-Json
+          $env:APPDATA = Join-Path $root 'AppData/Roaming'
+          $userData = Join-Path $env:APPDATA $descriptor.userDataFolder
+          $runtime = Join-Path $userData 'runtime/v1'
+          $venv = Join-Path $runtime 'venv'
+          $python = Join-Path $venv 'Scripts/python.exe'
+          $appExe = Get-ChildItem release/win-unpacked -File -Filter '*.exe' |
+            Where-Object Name -NotMatch 'Uninstall' | Select-Object -First 1
+          if (-not $appExe) { throw 'Packaged app executable missing' }
+          $env:STEMSTUDIO_WINDOWS_PROFILE = 'cpu'
+          Remove-Item Env:STEMSTUDIO_USER_DATA -ErrorAction SilentlyContinue
+          $setup = Start-Process $appExe.FullName -ArgumentList '--setup-runtime-smoke' `
+            -Wait -PassThru -NoNewWindow
+          if ($setup.ExitCode -ne 0) { throw "Managed app runtime setup exited $($setup.ExitCode)" }
+          if (-not (Test-Path (Join-Path $runtime 'ready.json'))) { throw 'Atomic readiness manifest missing' }
+          if (-not (Test-Path $python)) { throw 'Managed CPython executable missing' }
+          Set-Content (Join-Path $runtime 'ready.json') '{"schema":1}' -Encoding utf8NoBOM
+          $repair = Start-Process $appExe.FullName -ArgumentList '--setup-runtime-smoke' `
+            -Wait -PassThru -NoNewWindow
+          if ($repair.ExitCode -ne 0) { throw "Interrupted-runtime repair exited $($repair.ExitCode)" }
+          $ready = Get-Content (Join-Path $runtime 'ready.json') -Raw | ConvertFrom-Json
+          if ($ready.pythonVersion -ne '3.12.10' -or $ready.uvVersion -ne '0.11.28') {
+            throw 'Repaired readiness manifest has unexpected tool versions'
+          }
+          $env:STEMSTUDIO_DEVICE = 'cpu'
+          $env:SMOKE_CLIENT_PYTHON = $python
+          $env:STEMSTUDIO_MCP_ENTRY = Join-Path $resources 'mcp/index.js'
+          $env:STEMSTUDIO_MCP_LAUNCHER = Join-Path $resources 'mcp/stem-studio-mcp.cmd'
+          $env:STEMSTUDIO_FFMPEG = Join-Path $resources 'runtime-bootstrap/windows/ffmpeg.exe'
+          $env:STEMSTUDIO_FFPROBE = Join-Path $resources 'runtime-bootstrap/windows/ffprobe.exe'
+          $env:SMOKE_PACKAGED_RESOLUTION = '1'
+          $env:STEMSTUDIO_SMOKE_ROOT = Join-Path $root 'Pipeline Output'
+          $env:SMOKE_ENGINE = 'tiger'
+          $env:SMOKE_VIDEO = '1'
+          $env:SMOKE_KEEP_OUTPUT = '1'
+          node mcp/scripts/smoke.mjs
+
+      - name: Upload TIGER CPU gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-tiger-cpu-gate-${{ steps.tag.outputs.tag }}
+          path: ${{ runner.temp }}/OneDrive - Studio/Director's Cut/场景 TIGER Gate/Pipeline Output
+          if-no-files-found: warn
+          retention-days: 14
+
   linux-arm64:
+    if: ${{ (github.event_name == 'push' && !contains(github.ref_name, '-windows.')) || (github.event_name == 'workflow_dispatch' && !contains(inputs.tag, '-windows.')) }}
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Resolve tag
@@ -56,6 +288,13 @@ jobs:
           fpm --version
 
       - run: npm ci
+      - name: Prepare port-era packaged resources when configured
+        run: |
+          if node -e "const p=require('./package.json'); process.exit(p.scripts?.['build:mcp'] ? 0 : 1)"; then
+            npm run build:mcp
+            npm run audit:redistribution
+            npm run notices:check
+          fi
       - run: npm run typecheck
       - run: npm run build
 
@@ -79,6 +318,7 @@ jobs:
             --repo "${{ github.repository }}" --clobber
 
   macos-arm64:
+    if: ${{ (github.event_name == 'push' && !contains(github.ref_name, '-windows.')) || (github.event_name == 'workflow_dispatch' && !contains(inputs.tag, '-windows.')) }}
     runs-on: macos-14
     steps:
       - name: Resolve tag
@@ -96,13 +336,19 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run build
+      - name: Install media build prerequisites
+        run: brew install pkg-config yasm nasm cmake meson ninja
 
-      # Unsigned, matching electron-builder.yml (identity: null).
       - name: Package (dmg + zip, arm64)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac --arm64 --config electron-builder.yml --publish never
+        run: |
+          if node -e "const p=require('./package.json'); process.exit(p.scripts?.['package:mac'] ? 0 : 1)"; then
+            npm run package:mac
+          else
+            npm run build
+            npx electron-builder --mac --arm64 --config electron-builder.yml --publish never
+          fi
 
       - name: Attach to release
         env:

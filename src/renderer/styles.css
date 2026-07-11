@@ -97,6 +97,11 @@ body::before {
   backdrop-filter: blur(8px);
 }
 
+.platform-windows .titlebar,
+.platform-linux .titlebar {
+  padding-left: 16px;
+}
+
 .titlebar-logo {
   height: 22px;
   width: 22px;

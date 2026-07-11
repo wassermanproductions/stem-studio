@@ -16,7 +16,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm, access, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, access } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
@@ -24,20 +24,20 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const MCP_DIR = resolve(HERE, '..')
-const SERVER = join(MCP_DIR, 'dist', 'index.js')
+const SERVER = process.env.STEMSTUDIO_MCP_ENTRY
+  ? resolve(process.env.STEMSTUDIO_MCP_ENTRY)
+  : join(MCP_DIR, 'dist', 'index.js')
+const PACKAGED_RESOLUTION = process.env.SMOKE_PACKAGED_RESOLUTION === '1'
 
 // Repo root: STEMSTUDIO_ROOT wins, else this worktree (mcp/..).
 const REPO = process.env.STEMSTUDIO_ROOT
   ? resolve(process.env.STEMSTUDIO_ROOT)
   : resolve(MCP_DIR, '..')
-// Python: STEMSTUDIO_PYTHON wins, else <repo>/.venv, else the shared checkout's
-// .venv (the worktree usually has no .venv of its own).
+// Python: STEMSTUDIO_PYTHON wins, else <repo>/.venv.
 const PY =
+  process.env.SMOKE_CLIENT_PYTHON ||
   process.env.STEMSTUDIO_PYTHON ||
-  firstExistingSync([
-    join(REPO, '.venv', 'bin', 'python'),
-    '/Users/eklpse1/Desktop/stem-studio/.venv/bin/python'
-  ])
+  firstExistingSync([join(REPO, '.venv', 'bin', 'python')])
 
 import { existsSync } from 'node:fs'
 function firstExistingSync(paths) {
@@ -132,10 +132,20 @@ async function main() {
     throw new Error(`server not built: ${SERVER} (run npm run build first)`)
   }
 
-  const work = await mkdtemp(join(tmpdir(), 'stemstudio-smoke-'))
+  const requestedRoot = process.env.STEMSTUDIO_SMOKE_ROOT
+  const base = requestedRoot
+    ? resolve(requestedRoot)
+    : await mkdtemp(join(tmpdir(), 'stemstudio-smoke-'))
+  const work = join(base, 'OneDrive - Studio', "Director's Cut", '场景 Assets')
+  await mkdir(work, { recursive: true })
   const cache = join(work, 'cache')
-  const inputWav = join(work, 'tone.wav')
-  const outDir = join(work, 'out')
+  const inputWav = join(work, "Married Mix '01' 场景.wav")
+  const inputVideo = join(work, "Picture Lock '01' 场景.mov")
+  const outDir = join(work, "Output Stems 'Final' 场景")
+  const engine = process.env.SMOKE_ENGINE || 'stub'
+  const makeVideo = process.env.SMOKE_VIDEO === '1'
+  const ffmpeg = process.env.STEMSTUDIO_FFMPEG || 'ffmpeg'
+  const ffprobe = process.env.STEMSTUDIO_FFPROBE || 'ffprobe'
   const transcript = []
 
   // 1) Generate a test WAV via the repo's helper script (uses the venv).
@@ -143,16 +153,54 @@ async function main() {
     PYTHONPATH: join(REPO, 'python')
   })
   transcript.push(`generated test wav: ${inputWav}`)
+  if (makeVideo) {
+    await runToCompletion(ffmpeg, [
+      '-y',
+      '-f', 'lavfi', '-i', 'color=c=black:s=320x180:r=24:d=5',
+      '-i', inputWav,
+      '-shortest',
+      '-c:v', 'mpeg4',
+      // AAC introduces codec padding; using the extracted 44.1 kHz working mix
+      // for MARRIED is what keeps all four delivery WAVs sample-aligned.
+      '-c:a', 'aac',
+      inputVideo
+    ])
+    transcript.push(`generated video fixture: ${inputVideo}`)
+  }
+  const inputPath = makeVideo ? inputVideo : inputWav
 
   // 2) Launch the server.
-  const child = spawn('node', [SERVER], {
+  const launcher = process.env.STEMSTUDIO_MCP_LAUNCHER
+    ? resolve(process.env.STEMSTUDIO_MCP_LAUNCHER)
+    : null
+  const command = launcher && process.platform === 'win32'
+    ? (process.env.ComSpec || 'cmd.exe')
+    : (launcher || process.execPath)
+  const commandArgs = launcher && process.platform === 'win32'
+    ? ['/d', '/s', '/c', `"${launcher}"`]
+    : (launcher ? [] : [SERVER])
+  const serverEnv = { ...process.env }
+  if (PACKAGED_RESOLUTION) {
+    for (const key of [
+      'STEMSTUDIO_ROOT',
+      'STEMSTUDIO_PYTHON',
+      'STEMSTUDIO_FFMPEG',
+      'STEMSTUDIO_FFPROBE',
+      'STEMSTUDIO_CACHE',
+      'STEMSTUDIO_RESOURCES',
+      'STEMSTUDIO_USER_DATA',
+      'STEMSTUDIO_USER_DATA_FOLDER'
+    ]) delete serverEnv[key]
+  } else {
+    serverEnv.STEMSTUDIO_ROOT = REPO
+    serverEnv.STEMSTUDIO_PYTHON = PY
+    serverEnv.STEMSTUDIO_CACHE = cache
+  }
+  serverEnv.STEMSTUDIO_ENABLE_TEST_ENGINES = engine === 'stub' ? '1' : '0'
+  const child = spawn(command, commandArgs, {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      STEMSTUDIO_ROOT: REPO,
-      STEMSTUDIO_PYTHON: PY,
-      STEMSTUDIO_CACHE: cache
-    }
+    env: serverEnv,
+    windowsHide: true
   })
   let serverStderr = ''
   child.stderr.setEncoding('utf-8')
@@ -188,13 +236,13 @@ async function main() {
     // probe_media
     const probeRes = await client.request('tools/call', {
       name: 'probe_media',
-      arguments: { path: inputWav }
+      arguments: { path: inputPath }
     })
     const probe = toolJson(probeRes)
     transcript.push(
       `probe_media -> duration=${probe.duration}s sr=${probe.sample_rate} ch=${probe.channels} has_video=${probe.has_video} format=${probe.format}`
     )
-    if (probe.has_video !== false) throw new Error('probe: expected has_video=false for a WAV')
+    if (probe.has_video !== makeVideo) throw new Error(`probe: unexpected has_video=${probe.has_video}`)
     if (probe.channels !== 2) throw new Error('probe: expected 2 channels')
 
     // separate_stems (stub engine, wait:true)
@@ -203,9 +251,10 @@ async function main() {
       {
         name: 'separate_stems',
         arguments: {
-          input_path: inputWav,
+          input_path: inputPath,
           output_dir: outDir,
-          engine: 'stub',
+          engine,
+          multitrack_video: makeVideo,
           wait: true
         },
         _meta: { progressToken: 'smoke-1' }
@@ -230,6 +279,32 @@ async function main() {
     for (const p of deliveries) {
       if (!p || !(await fileExists(p))) throw new Error(`missing delivery file: ${p}`)
     }
+    await runToCompletion(PY, [
+      join(REPO, 'python', 'verify_deliveries.py'),
+      sep.married,
+      sep.stems.dialogue,
+      sep.stems.music,
+      sep.stems.sfx
+    ])
+    transcript.push('sample alignment and mixture consistency verified')
+
+    if (makeVideo) {
+      if (!sep.multitrack_video || !(await fileExists(sep.multitrack_video))) {
+        throw new Error(`missing multitrack delivery: ${sep.multitrack_video}`)
+      }
+      const metadata = JSON.parse(await captureToCompletion(ffprobe, [
+        '-v', 'error', '-show_streams', '-of', 'json', sep.multitrack_video
+      ]))
+      const titles = metadata.streams
+        .filter((stream) => stream.codec_type === 'audio')
+        .map((stream) =>
+          stream.tags?.handler_name || stream.tags?.title || stream.tags?.name
+        )
+      for (const expected of ['Dialogue', 'Music', 'SFX']) {
+        if (!titles.includes(expected)) throw new Error(`multitrack labels missing ${expected}: ${titles}`)
+      }
+      transcript.push(`multitrack labels verified: ${titles.join(', ')}`)
+    }
     transcript.push(`delivery WAVs verified (4):`)
     for (const p of deliveries) transcript.push(`  - ${p}`)
 
@@ -244,8 +319,28 @@ async function main() {
     if (serverStderr.trim()) {
       console.error('--- server stderr ---\n' + serverStderr.trim())
     }
-    await rm(work, { recursive: true, force: true }).catch(() => {})
+    if (process.env.SMOKE_KEEP_OUTPUT !== '1') {
+      await rm(requestedRoot ? base : work, { recursive: true, force: true }).catch(() => {})
+    }
   }
+}
+
+function captureToCompletion(cmd, args, extraEnv = {}) {
+  return new Promise((res, rej) => {
+    const child = spawn(cmd, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...extraEnv },
+      windowsHide: true
+    })
+    let out = ''
+    let err = ''
+    child.stdout.on('data', (data) => (out += data))
+    child.stderr.on('data', (data) => (err += data))
+    child.on('error', rej)
+    child.on('close', (code) =>
+      code === 0 ? res(out) : rej(new Error(`${cmd} exited ${code}: ${err.slice(-1000)}`))
+    )
+  })
 }
 
 function runToCompletion(cmd, args, extraEnv = {}) {
