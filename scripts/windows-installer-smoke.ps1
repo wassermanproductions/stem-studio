@@ -21,14 +21,26 @@ if (-not $shortcut) { throw 'Start Menu shortcut missing' }
 $desktopRoot = [Environment]::GetFolderPath('Desktop')
 $desktopShortcut = Get-ChildItem $desktopRoot -Filter 'Stem Studio*.lnk' | Select-Object -First 1
 if (-not $desktopShortcut) { throw 'Desktop shortcut missing' }
-$shell = New-Object -ComObject WScript.Shell
-$startMenuTarget = $shell.CreateShortcut($shortcut.FullName).TargetPath
-$desktopTarget = $shell.CreateShortcut($desktopShortcut.FullName).TargetPath
-foreach ($target in @($startMenuTarget, $desktopTarget)) {
-  if ([IO.Path]::GetFullPath($target) -ine [IO.Path]::GetFullPath($appExe.FullName)) {
-    throw "Unicode shortcut target mismatch: $target instead of $($appExe.FullName)"
+
+function Assert-ShortcutLaunch([string]$shortcutPath, [string]$label) {
+  $before = @(Get-Process -Name $appExe.BaseName -ErrorAction SilentlyContinue).Id
+  Start-Process $shortcutPath | Out-Null
+  Start-Sleep -Seconds 5
+  $launched = @(Get-Process -Name $appExe.BaseName -ErrorAction SilentlyContinue |
+    Where-Object { $before -notcontains $_.Id })
+  if ($launched.Count -eq 0) { throw "$label shortcut did not launch the installed app" }
+  try {
+    foreach ($process in $launched) {
+      if ([IO.Path]::GetFullPath($process.Path) -ine [IO.Path]::GetFullPath($appExe.FullName)) {
+        throw "$label shortcut launched $($process.Path) instead of $($appExe.FullName)"
+      }
+    }
+  } finally {
+    $launched | Stop-Process -Force -ErrorAction SilentlyContinue
   }
 }
+Assert-ShortcutLaunch $shortcut.FullName 'Start Menu'
+Assert-ShortcutLaunch $desktopShortcut.FullName 'Desktop'
 
 $oldPath = $env:PATH
 try {
