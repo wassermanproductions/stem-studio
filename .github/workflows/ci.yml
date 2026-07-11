@@ -117,6 +117,8 @@ jobs:
           npm run smoke --prefix mcp
           & $python -c "import sys; sys.path.insert(0, r'$PWD\python'); from stemstudio_worker.separate import available_engines, available_qualities; assert available_engines() == ['tiger']; assert available_qualities() == ['fast', 'high']"
       - run: npx electron-builder --win nsis --x64 --config electron-builder.yml --publish never
+      - name: Packaged Unicode waveform and Show-in-Folder smoke
+        run: npm run smoke:waveform:packaged
       - name: Verify packaged private runtime inputs
         shell: pwsh
         run: |

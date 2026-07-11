@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import React from 'react'
 import { useStore, canSeparate } from '../store'
 import { startSeparation, formatDuration } from '../loadInput'

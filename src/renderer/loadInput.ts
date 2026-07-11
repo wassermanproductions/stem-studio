@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Renderer-side helpers for turning a probed input into store state, and for
  * kicking off a separation run.

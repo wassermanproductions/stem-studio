@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import React, { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { LANE_KINDS, LANE_LABELS, seekTimeFromX, playheadX, formatClock, type LaneKind } from '@shared/audioLanes'

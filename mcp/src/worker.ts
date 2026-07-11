@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Spawns the Python separation worker and parses its line-JSON stdout. Mirrors
  * the app's `src/main/job.ts` runWorker: detached process group so the whole

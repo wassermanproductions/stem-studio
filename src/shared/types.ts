@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Types and constants shared across main, preload, and renderer. Keep this
  * DOM-free and Electron-free so it can be imported anywhere (and unit-tested

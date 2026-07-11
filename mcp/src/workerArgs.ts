@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Pure builder for the Python separation-worker argv. Mirrors the app's
  * `src/shared/workerArgs.ts` but does NOT hard-validate the engine/quality

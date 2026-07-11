@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * The stem-studio MCP server: registers the six pipeline tools on an McpServer
  * and wires long-running work through the JobRegistry. Transport-agnostic — the

@@ -24,7 +24,8 @@
     "prepare:ffmpeg:mac": "node scripts/prepare-macos-media.mjs",
     "package": "npm run package:mac",
     "package:mac": "npm run prepare:ffmpeg:mac && node scripts/audit-media-binaries.mjs --platform mac && npm run notices:check && npm run build:mcp && npm run build && electron-builder --mac --arm64 --config electron-builder.yml --publish never",
-    "package:win": "npm run prepare:win-runtime && node scripts/audit-media-binaries.mjs --platform windows && npm run notices:check && npm run build:mcp && npm run build && electron-builder --win nsis --x64 --config electron-builder.yml --publish never",
+    "package:win": "npm run prepare:win-runtime && node scripts/audit-media-binaries.mjs --platform windows && npm run notices:check && npm run build:mcp && npm run build && electron-builder --win nsis --x64 --config electron-builder.yml --publish never && npm run smoke:waveform:packaged",
+    "smoke:waveform:packaged": "node scripts/packaged-waveform-smoke.mjs release/win-unpacked",
     "sbom:spdx": "npm sbom --sbom-format spdx > release/stem-studio.spdx.json",
     "sbom:cyclonedx": "cyclonedx-npm --output-file release/stem-studio.cdx.json --spec-version 1.6",
     "sbom:enrich": "node scripts/enrich-runtime-sbom.mjs"

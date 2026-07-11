@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Typed IPC bridge. The renderer sees exactly this surface as
  * window.stemstudio — nothing else from Node.

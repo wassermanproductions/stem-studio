@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * In-memory job registry + state machine for long-running tools (separation and
  * environment setup). Tracks status/stage/percent, terminal outputs or error,

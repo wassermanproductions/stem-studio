@@ -1,3 +1,4 @@
+<!-- Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md. -->
 # Stem Studio MCP — drive the separation pipeline from an AI agent
 
 `stem-studio-mcp` is a small [MCP](https://modelcontextprotocol.io) **stdio** server that lets any MCP client — **Claude Code, Codex, or any other** — run the Stem Studio pipeline **headlessly**: probe a file, separate a married soundtrack into Dialogue / Music / SFX stems, and (for video) remux a multitrack `.mov`. **No Electron and no running app are involved** — the server spawns `ffmpeg`/`ffprobe` and the Python separation worker itself.

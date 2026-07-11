@@ -1,3 +1,4 @@
+# Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 """TIGER-DnR separation engine.
 
 Wraps the vendored TIGER-DnR model (``vendor/tiger``) behind the ``Engine``

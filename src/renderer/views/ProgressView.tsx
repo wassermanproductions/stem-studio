@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import React from 'react'
 import { useStore, STAGE_ORDER, STAGE_LABELS, stageProgress } from '../store'
 import type { PipelineStage } from '@shared/types'

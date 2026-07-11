@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import React from 'react'
 import logo from '../assets/logo.png'
 import type { PlatformInfo } from '@shared/types'

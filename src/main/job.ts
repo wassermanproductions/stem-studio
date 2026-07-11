@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Job orchestration: extract audio -> (setup venv) -> run Python worker ->
  * convert stems to delivery WAVs -> (optionally) remux multitrack .mov.

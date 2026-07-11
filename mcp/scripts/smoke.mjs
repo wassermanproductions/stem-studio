@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Integration smoke test: build must have run first (dist/index.js exists).
  * Spawns the server over stdio, speaks raw MCP JSON-RPC 2.0 (newline-delimited),

@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Environment / binary resolution. Headless (no Electron), so the resolution
  * rules from the app's ffmpeg.ts + pythonEnv.ts are re-expressed here in terms

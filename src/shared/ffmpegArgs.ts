@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Pure ffmpeg/ffprobe argument builders. No spawning, no fs — just the
  * argv arrays, so they can be unit-tested without touching the system.

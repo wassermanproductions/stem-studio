@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Pure ffmpeg/ffprobe argv builders — no spawning, no fs. Mirrors the app's
  * `src/shared/ffmpegArgs.ts` (which cannot be imported here). Unit-tested.

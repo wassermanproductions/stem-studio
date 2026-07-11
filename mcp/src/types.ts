@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Constants and types the MCP server needs, mirrored from the app's
  * `src/shared/types.ts`. This package cannot import Electron/app code, so the

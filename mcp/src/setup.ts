@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Python-environment readiness (`setup_status`) and provisioning
  * (`setup_environment`). Headless equivalent of the app's `src/main/pythonEnv.ts`:

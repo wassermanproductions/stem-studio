@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import { describe, it, expect } from 'vitest'
 import {
   resolveQuality,

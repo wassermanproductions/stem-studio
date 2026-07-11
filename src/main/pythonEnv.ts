@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Private Python runtime management. Windows is prerequisite-free: packaged uv
  * installs pinned CPython and synchronizes a hashed dependency lock entirely

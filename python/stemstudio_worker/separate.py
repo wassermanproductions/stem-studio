@@ -1,3 +1,4 @@
+# Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 """Engine-agnostic separation CLI.
 
 Usage::

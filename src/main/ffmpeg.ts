@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * ffmpeg/ffprobe process helpers for the main process. Pure argv building
  * lives in ../shared/ffmpegArgs; this module resolves the binaries and runs

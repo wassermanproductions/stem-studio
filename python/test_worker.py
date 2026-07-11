@@ -1,3 +1,4 @@
+# Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 """End-to-end worker test (no framework required).
 
 Synthesizes a 5s multi-band test tone, runs the worker CLI as a subprocess

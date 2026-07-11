@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Headless separation pipeline: probe -> extract audio -> run worker ->
  * convert stems + conform the married mix -> optional multitrack .mov remux.

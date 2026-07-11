@@ -1,3 +1,4 @@
+# Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 appId: com.wassermanproductions.stemstudio
 productName: Stem Studio
 artifactName: Stem-Studio-${version}-${os}-${arch}.${ext}

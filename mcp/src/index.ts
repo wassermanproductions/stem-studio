@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * stem-studio-mcp bin entry. Connects the MCP server over the stdio transport.
  * No arguments; configuration is via env vars (STEMSTUDIO_ROOT / _PYTHON /

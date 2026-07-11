@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import { describe, it, expect } from 'vitest'
 import { workerArgs, probeWorkerArgs } from '@shared/workerArgs'
 import { DEFAULT_ENGINE } from '@shared/types'

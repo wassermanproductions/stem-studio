@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * ffmpeg/ffprobe process helpers. Pure argv building lives in ./ffmpegArgs;
  * binary resolution in ./resolve. This module only spawns. Mirrors the app's
