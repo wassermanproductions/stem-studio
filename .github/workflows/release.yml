@@ -167,6 +167,8 @@ jobs:
 
       - name: Write build provenance
         run: node scripts/write-build-provenance.mjs windows-x64
+        env:
+          STEM_SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - name: Write SHA256SUMS
         shell: pwsh

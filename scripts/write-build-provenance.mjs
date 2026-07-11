@@ -36,10 +36,13 @@ for (const name of await readdir(release)) {
   }
 }
 
-const gitSha = process.env.GITHUB_SHA || execFileSync('git', ['rev-parse', 'HEAD'], {
+// Record the source that was actually checked out. For manually dispatched tag
+// builds, GITHUB_SHA identifies the workflow branch rather than the tag commit.
+const gitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
   cwd: root,
   encoding: 'utf8'
 }).trim()
+const sourceRef = process.env.STEM_SOURCE_REF ?? process.env.GITHUB_REF ?? null
 const provenance = {
   schemaVersion: 1,
   predicateType: 'https://slsa.dev/provenance/v1',
@@ -48,7 +51,7 @@ const provenance = {
     buildType: 'https://github.com/electron-userland/electron-builder',
     externalParameters: {
       platform,
-      ref: process.env.GITHUB_REF ?? null,
+      ref: sourceRef,
       repository: process.env.GITHUB_REPOSITORY ?? null
     },
     resolvedDependencies: [
