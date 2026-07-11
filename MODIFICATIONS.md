@@ -6,8 +6,9 @@ Wasserman attribution, and citation metadata.
 Frozen upstream implementation base:
 `fa1bcd092cecca891cb6192d805999165df351e7`.
 
-Windows-port modifications, contributed by **Gumbii Digital**
-([github.com/GumbiiDigital](https://github.com/GumbiiDigital)), include native
+Windows support contributed and maintained by **Gumbii Digital**
+([github.com/GumbiiDigital](https://github.com/GumbiiDigital)). These
+modifications include native
 Windows window/installer behavior, private uv-managed Python, bundled
 FFmpeg/FFprobe resolution, Windows-safe paths and process cancellation,
 packaged MCP runtime discovery, dependency and model pinning, and

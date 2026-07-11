@@ -30,6 +30,13 @@
         "svtav1-2.3.0.tar.gz": "ebb0b484ef4a0dc281e94342a9f73ad458496f5d3457eca7465bec943910c6c3",
         "FFmpeg-source.tar.gz": "2caafb2bbfb69c0518470651640e71ac7f5fb3117d188bf6ea2d909307a02b1d"
       },
+      "prebuilt": {
+        "darwin-arm64": {
+          "name": "stem-ffmpeg-macos-arm64.tar.gz",
+          "url": "https://github.com/wassermanproductions/stem-studio/releases/download/media-tools-1/stem-ffmpeg-macos-arm64.tar.gz",
+          "sha256": "09296cbc6729582ca8127e9638198a4edf9cbf89f096a8c54ccb0379a77a83ea"
+        }
+      },
       "redistributionStatus": "source-build-required-macos-arm64"
     },
     {

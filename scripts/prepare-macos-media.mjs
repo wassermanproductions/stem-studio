@@ -10,6 +10,7 @@ const outputDir = join(ROOT, 'build', 'runtime', 'macos-arm64')
 const patchPath = join(ROOT, 'build', 'ffmpeg', 'macos-arm64-gpl.patch')
 const BUILD_COMMIT = '967cfb0c7d8ab000c466d00e4b6186f150ef4481'
 const FFMPEG_COMMIT = '7d0e8420048cffd0ca3883b877ead2390496d0b2'
+const LICENSE_SHA256 = '8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903'
 
 const sources = [
   {
@@ -80,6 +81,92 @@ function run(command, args, options = {}) {
   return `${result.stdout}\n${result.stderr}`
 }
 
+/**
+ * Enforce the same GPL provenance, linkage, and smoke checks on a prepared
+ * FFmpeg/FFprobe pair regardless of whether it was built from source here or
+ * downloaded from the pinned prebuilt asset. Throws loudly on any mismatch.
+ */
+async function auditMediaTools({ ffmpeg, ffprobe, license, workDir }) {
+  if (sha256(await readFile(license)) !== LICENSE_SHA256) {
+    throw new Error('FFmpeg GPLv3 license hash did not match the audited source.')
+  }
+
+  const configuration = run(ffmpeg, ['-hide_banner', '-buildconf'])
+  for (const flag of ['--enable-gpl', '--enable-version3', '--enable-libx264']) {
+    if (!configuration.includes(flag)) throw new Error(`macOS FFmpeg is missing ${flag}`)
+  }
+  for (const flag of ['--enable-nonfree', '--enable-openssl']) {
+    if (configuration.includes(flag)) throw new Error(`macOS FFmpeg contains forbidden ${flag}`)
+  }
+
+  const linkage = run('otool', ['-L', ffmpeg])
+  for (const line of linkage.split('\n').slice(1).map((line) => line.trim()).filter(Boolean)) {
+    if (!line.startsWith('/usr/lib/') && !line.startsWith('/System/Library/')) {
+      throw new Error(`macOS FFmpeg has a non-system dynamic dependency: ${line}`)
+    }
+  }
+
+  const smoke = join(workDir, 'h264-aac-smoke.mp4')
+  run(ffmpeg, [
+    '-y', '-f', 'lavfi', '-i', 'testsrc=size=160x90:rate=24:duration=1',
+    '-f', 'lavfi', '-i', 'sine=frequency=1000:duration=1',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', smoke
+  ])
+  const smokeProbe = JSON.parse(run(ffprobe, [
+    '-v', 'error', '-show_streams', '-of', 'json', smoke
+  ]).trim())
+  const codecs = smokeProbe.streams.map((stream) => stream.codec_name)
+  if (!codecs.includes('h264') || !codecs.includes('aac')) {
+    throw new Error(`macOS media smoke did not produce H.264 + AAC: ${codecs}`)
+  }
+}
+
+/** The pinned prebuilt darwin-<arch> asset from the manifest, or null. */
+async function manifestPrebuilt() {
+  const manifest = JSON.parse(await readFile(join(ROOT, 'assets-manifest.json'), 'utf8'))
+  for (const asset of manifest.assets ?? []) {
+    const pinned = asset.prebuilt?.[`darwin-${process.arch}`]
+    if (pinned?.url && pinned?.sha256 && pinned?.name) return pinned
+  }
+  return null
+}
+
+const buildFromSource = process.argv.includes('--build-from-source')
+const prebuilt = await manifestPrebuilt()
+
+if (prebuilt && !buildFromSource) {
+  await rm(temporaryDir, { recursive: true, force: true })
+  await rm(outputDir, { recursive: true, force: true })
+  await mkdir(temporaryDir, { recursive: true })
+
+  const archive = join(temporaryDir, prebuilt.name)
+  await download(prebuilt, archive)
+  run('tar', ['-xzf', archive, '-C', join(ROOT, 'build', 'runtime')])
+
+  const provenancePath = join(outputDir, 'media-provenance.json')
+  const provenance = JSON.parse(await readFile(provenancePath, 'utf8'))
+  if (provenance.buildScriptsCommit !== BUILD_COMMIT || provenance.ffmpegCommit !== FFMPEG_COMMIT) {
+    throw new Error('Prebuilt macOS media provenance does not match the pinned commits.')
+  }
+  for (const [name, hash] of Object.entries(provenance.files)) {
+    const actual = sha256(await readFile(join(outputDir, name)))
+    if (actual !== hash) {
+      throw new Error(`Prebuilt ${name} checksum mismatch: expected ${hash}, received ${actual}`)
+    }
+  }
+
+  await auditMediaTools({
+    ffmpeg: join(outputDir, 'ffmpeg'),
+    ffprobe: join(outputDir, 'ffprobe'),
+    license: join(outputDir, 'LICENSE-FFmpeg.txt'),
+    workDir: temporaryDir
+  })
+
+  await rm(temporaryDir, { recursive: true, force: true })
+  console.log(`Downloaded audited macOS arm64 media tools into ${outputDir}`)
+  process.exit(0)
+}
+
 await rm(temporaryDir, { recursive: true, force: true })
 await rm(outputDir, { recursive: true, force: true })
 await mkdir(temporaryDir, { recursive: true })
@@ -115,38 +202,8 @@ const license = join(
   'FFmpeg-release-7.1.5-portable-gpl.1',
   'COPYING.GPLv3'
 )
-if (sha256(await readFile(license)) !== '8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903') {
-  throw new Error('FFmpeg GPLv3 license hash did not match the audited source.')
-}
 
-const configuration = run(ffmpeg, ['-hide_banner', '-buildconf'])
-for (const flag of ['--enable-gpl', '--enable-version3', '--enable-libx264']) {
-  if (!configuration.includes(flag)) throw new Error(`macOS FFmpeg is missing ${flag}`)
-}
-for (const flag of ['--enable-nonfree', '--enable-openssl']) {
-  if (configuration.includes(flag)) throw new Error(`macOS FFmpeg contains forbidden ${flag}`)
-}
-
-const linkage = run('otool', ['-L', ffmpeg])
-for (const line of linkage.split('\n').slice(1).map((line) => line.trim()).filter(Boolean)) {
-  if (!line.startsWith('/usr/lib/') && !line.startsWith('/System/Library/')) {
-    throw new Error(`macOS FFmpeg has a non-system dynamic dependency: ${line}`)
-  }
-}
-
-const smoke = join(temporaryDir, 'h264-aac-smoke.mp4')
-run(ffmpeg, [
-  '-y', '-f', 'lavfi', '-i', 'testsrc=size=160x90:rate=24:duration=1',
-  '-f', 'lavfi', '-i', 'sine=frequency=1000:duration=1',
-  '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', smoke
-])
-const smokeProbe = JSON.parse(run(ffprobe, [
-  '-v', 'error', '-show_streams', '-of', 'json', smoke
-]).trim())
-const codecs = smokeProbe.streams.map((stream) => stream.codec_name)
-if (!codecs.includes('h264') || !codecs.includes('aac')) {
-  throw new Error(`macOS media smoke did not produce H.264 + AAC: ${codecs}`)
-}
+await auditMediaTools({ ffmpeg, ffprobe, license, workDir: temporaryDir })
 
 await copyFile(ffmpeg, join(outputDir, 'ffmpeg'))
 await copyFile(ffprobe, join(outputDir, 'ffprobe'))

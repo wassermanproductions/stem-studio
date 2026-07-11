@@ -70,7 +70,7 @@ The three stems sum back to the original mix **exactly, sample-for-sample** — 
 ## Requirements
 
 - **Windows 11 x64**, **macOS Apple silicon**, or **Linux arm64 + CUDA** (for example an [NVIDIA DGX Spark](#running-on-nvidia-dgx-spark)). Windows 10 is best effort.
-- Windows packages include a checksum-verified BtbN GPL FFmpeg/FFprobe pair and uv bootstrapper, with no system Python, PATH, or registry changes. macOS arm64 packages build their audited GPL media pair from pinned source; Linux keeps the existing system-tool fallback and never bundles another platform's runtime.
+- Windows packages include a checksum-verified BtbN GPL FFmpeg/FFprobe pair and uv bootstrapper, with no system Python, PATH, or registry changes. macOS arm64 packages download a pinned, audited GPL media pair (or rebuild it from pinned source with `npm run prepare:ffmpeg:mac -- --build-from-source`); Linux keeps the existing system-tool fallback and never bundles another platform's runtime.
 - macOS/Linux source builds may use system FFmpeg and Python 3.10+ through the existing fallback paths.
 - **Node 22+** — for development only.
 
@@ -244,4 +244,4 @@ Apache-2.0 © 2026 Sam Wasserman. See [LICENSE](LICENSE) and [NOTICE](NOTICE) �
 
 Created by **Sam Wasserman** — [wassermanproductions.com](https://wassermanproductions.com) · [wasserman.ai](https://wasserman.ai)
 
-Windows desktop port contributed by **Gumbii Digital** ([github.com/GumbiiDigital](https://github.com/GumbiiDigital)) — see [MODIFICATIONS.md](MODIFICATIONS.md).
+Windows support contributed and maintained by **Gumbii Digital** ([github.com/GumbiiDigital](https://github.com/GumbiiDigital)) — see [MODIFICATIONS.md](MODIFICATIONS.md).
