@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
 
 const closedChildren = new WeakSet<ChildProcess>()
+const liveChildren = new Set<ChildProcess>()
 const TASKKILL_TIMEOUT_MS = 5_000
 
 export function childSpawnOptions(extra: SpawnOptions = {}): SpawnOptions {
@@ -8,7 +9,11 @@ export function childSpawnOptions(extra: SpawnOptions = {}): SpawnOptions {
 }
 
 export function trackProcess(child: ChildProcess): ChildProcess {
-  child.once('close', () => closedChildren.add(child))
+  liveChildren.add(child)
+  child.once('close', () => {
+    closedChildren.add(child)
+    liveChildren.delete(child)
+  })
   return child
 }
 
@@ -60,4 +65,9 @@ export async function killTree(child: ChildProcess | undefined): Promise<void> {
     }
   }
   await exited
+}
+
+/** Close every uv/Python/FFmpeg/worker process still owned by the MCP server. */
+export async function terminateAllProcesses(): Promise<void> {
+  await Promise.all([...liveChildren].map((child) => killTree(child)))
 }
