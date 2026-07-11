@@ -154,10 +154,23 @@ jobs:
       - name: Write SHA256SUMS
         shell: pwsh
         run: |
-          Get-ChildItem release/*.exe,release/*.json,release/*.txt,release/*.md -File | ForEach-Object {
+          $releaseRoot = (Resolve-Path release).Path
+          $distributed = @(
+            Get-ChildItem release/*.exe,release/*.json,release/*.txt,release/*.md -File
+            if (Test-Path release/corresponding-source) {
+              Get-ChildItem release/corresponding-source -File -Recurse
+            }
+          )
+          $lines = $distributed | Sort-Object FullName | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-            "$hash  $($_.Name)" | Add-Content release/SHA256SUMS
+            $relative = [IO.Path]::GetRelativePath($releaseRoot, $_.FullName).Replace('\', '/')
+            "$hash *$relative"
           }
+          [IO.File]::WriteAllText(
+            (Join-Path $releaseRoot 'SHA256SUMS'),
+            (($lines -join "`n") + "`n"),
+            [Text.Encoding]::ASCII
+          )
 
       - name: Attest Windows installer provenance
         uses: actions/attest-build-provenance@v2
