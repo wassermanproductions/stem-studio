@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/launcher-command.test.mjs",
     "test:watch": "vitest",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "smoke:packaged": "node scripts/packaged-smoke.mjs"

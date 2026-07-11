@@ -41,6 +41,17 @@ $descriptor = Get-Content $descriptorPath -Raw | ConvertFrom-Json
 $dataRoot = Join-Path $env:APPDATA $descriptor.userDataFolder
 if (-not (Test-Path $dataRoot)) { throw "Expected per-user data root was not created: $dataRoot" }
 
+$mcpLauncher = Join-Path $installDir 'resources\mcp\stem-studio-mcp.cmd'
+if (-not (Test-Path $mcpLauncher)) { throw 'Installed MCP launcher missing' }
+$oldMcpLauncher = $env:STEMSTUDIO_MCP_LAUNCHER
+try {
+  $env:STEMSTUDIO_MCP_LAUNCHER = $mcpLauncher
+  & node mcp/scripts/launcher-smoke.mjs
+  if ($LASTEXITCODE -ne 0) { throw "Installed MCP launcher smoke exited $LASTEXITCODE" }
+} finally {
+  $env:STEMSTUDIO_MCP_LAUNCHER = $oldMcpLauncher
+}
+
 $uninstaller = Get-ChildItem $installDir -Filter 'Uninstall*.exe' | Select-Object -First 1
 if (-not $uninstaller) { throw 'Uninstaller missing' }
 $uninstall = Start-Process $uninstaller.FullName -ArgumentList '/S' -Wait -PassThru

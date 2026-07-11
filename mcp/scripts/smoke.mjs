@@ -21,6 +21,7 @@ import { constants } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { launcherCommand, stopServerChild } from './launcher-command.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const MCP_DIR = resolve(HERE, '..')
@@ -177,8 +178,7 @@ async function main() {
   const launcher = process.env.STEMSTUDIO_MCP_LAUNCHER
     ? resolve(process.env.STEMSTUDIO_MCP_LAUNCHER)
     : null
-  const command = launcher || process.execPath
-  const commandArgs = launcher ? [] : [SERVER]
+  const launch = launcherCommand({ launcher, server: SERVER })
   const serverEnv = { ...process.env }
   if (PACKAGED_RESOLUTION) {
     for (const key of [
@@ -197,14 +197,11 @@ async function main() {
     serverEnv.STEMSTUDIO_CACHE = cache
   }
   serverEnv.STEMSTUDIO_ENABLE_TEST_ENGINES = engine === 'stub' ? '1' : '0'
-  const child = spawn(command, commandArgs, {
+  const child = spawn(launch.command, launch.args, {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: serverEnv,
     windowsHide: true,
-    // The packaged Windows bridge is a trusted generated .cmd file. Let Node
-    // serialize its path through cmd.exe; manually nesting quotes breaks paths
-    // containing spaces, apostrophes, and Unicode.
-    shell: !!launcher && process.platform === 'win32'
+    shell: false
   })
   let serverStderr = ''
   child.stderr.setEncoding('utf-8')
@@ -334,31 +331,6 @@ function timeoutFromEnv(name, fallback) {
     throw new Error(`${name} must be an integer from 1000 to 3600000 milliseconds`)
   }
   return value
-}
-
-async function stopServerChild(child) {
-  if (child.exitCode !== null || child.signalCode !== null) return
-  const closed = new Promise((resolvePromise) => child.once('close', () => resolvePromise(true)))
-  try { child.stdin.end() } catch {}
-  if (await Promise.race([closed, delay(15_000, false)])) return
-
-  if (process.platform === 'win32' && child.pid) {
-    await new Promise((resolvePromise) => {
-      const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
-        windowsHide: true,
-        stdio: 'ignore'
-      })
-      killer.once('error', resolvePromise)
-      killer.once('close', resolvePromise)
-    })
-  } else {
-    try { child.kill('SIGKILL') } catch {}
-  }
-  await Promise.race([closed, delay(5_000, false)])
-}
-
-function delay(ms, value) {
-  return new Promise((resolvePromise) => setTimeout(() => resolvePromise(value), ms))
 }
 
 function captureToCompletion(cmd, args, extraEnv = {}) {
