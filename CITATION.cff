@@ -1,3 +1,4 @@
+# Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 cff-version: 1.2.0
 message: "If you use Stem Studio in your work, please cite it and credit Sam Wasserman (wassermanproductions.com), per the project's NOTICE and Section 4(d) of the Apache License 2.0."
 title: "Stem Studio"
@@ -7,7 +8,7 @@ authors:
   - family-names: "Wasserman"
     given-names: "Sam"
     website: "https://wassermanproductions.com"
-version: "1.0.0"
+version: "1.1.0"
 date-released: "2026-07-09"
 license: "Apache-2.0"
 url: "https://github.com/wassermanproductions/stem-studio"

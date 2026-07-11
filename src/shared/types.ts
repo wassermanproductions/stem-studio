@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Types and constants shared across main, preload, and renderer. Keep this
  * DOM-free and Electron-free so it can be imported anywhere (and unit-tested
@@ -15,10 +16,9 @@ export const ENGINE_SAMPLE_RATE = 44_100
 export const OUTPUT_SAMPLE_RATE = 48_000
 export const OUTPUT_BIT_DEPTH = 24
 
-/** Separation engine module the worker runs. `tiger` and `mvsep` are the two
- * neural separation engines; `stub` is a dependency-light band-splitter (no
- * torch) used for tests and torch-free environments. The names are the worker's
- * `--engine` flag values. */
+/** Separation engines retained from the upstream cross-platform app. Public
+ * Windows builds expose TIGER only; MVSEP remains available to the existing
+ * macOS/Linux runtime and explicit research builds. `stub` is test-only. */
 export type EngineName = 'tiger' | 'mvsep' | 'stub'
 export const DEFAULT_ENGINE: EngineName = 'tiger'
 /** Human label for the active engine, if surfaced in the UI. */
@@ -31,9 +31,22 @@ export const ENGINE_LABEL: Record<EngineName, string> = {
 /** Separation quality mode.
  * - `fast` — a single quick pass.
  * - `high` — a slower multi-pass ensemble, better separation.
- * - `max`  — a dual-engine blend for best quality; slowest. Implies both
- *   neural engines regardless of `--engine`. */
+ * - `max` — the legacy dual-engine blend, unavailable in public Windows builds.
+ */
 export type QualityMode = 'fast' | 'high' | 'max'
+
+export type AppPlatform = 'mac' | 'windows' | 'linux'
+
+const WINDOWS_PRODUCTION_QUALITIES: readonly QualityMode[] = ['fast', 'high']
+const LEGACY_PRODUCTION_QUALITIES: readonly QualityMode[] = ['fast', 'high', 'max']
+
+/** Public Windows binaries are licensed TIGER-only; other platforms retain
+ * the upstream Max workflow until a broader licensing decision is made. */
+export function productionQualitiesForPlatform(platform: AppPlatform): readonly QualityMode[] {
+  return platform === 'windows'
+    ? WINDOWS_PRODUCTION_QUALITIES
+    : LEGACY_PRODUCTION_QUALITIES
+}
 
 export const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm'] as const
 export const AUDIO_EXTENSIONS = ['wav', 'mp3', 'aac', 'flac', 'm4a'] as const
@@ -131,8 +144,8 @@ export interface SeparateOptions {
   outputDir: string
   /** Remux original video + stems into a multitrack .mov. Video inputs only. */
   multitrackVideo: boolean
-  /** Quality tier: `fast` | `high` | `max`. Takes precedence over
-   * `highQuality` when set. `max` blends the two neural engines. */
+  /** Quality tier. Public Windows builds accept `fast` | `high`; existing
+   * macOS/Linux builds also accept the legacy `max` tier. */
   quality?: QualityMode
   /** Legacy toggle: slower TTA (`high`) when true. Superseded by `quality`. */
   highQuality?: boolean
@@ -162,14 +175,33 @@ export interface WorkerProbe {
   torch: string | null
   /** Engines available in this worker build. */
   engines: EngineName[]
+  /** Quality modes available in this worker build. */
+  qualities: QualityMode[]
 }
 
-/** Map a probed device to the quality tier we default the UI to:
- * cuda → max, mps → high, cpu → fast. */
-export function defaultQualityForDevice(device: WorkerProbe['device']): QualityMode {
-  if (device === 'cuda') return 'max'
-  if (device === 'mps') return 'high'
+/** Map a probed device to the quality default for the active distribution. */
+export function defaultQualityForDevice(
+  device: WorkerProbe['device'],
+  maxAvailable = true
+): QualityMode {
+  if (device === 'cuda' && maxAvailable) return 'max'
+  if (device === 'cuda' || device === 'mps') return 'high'
   return 'fast'
+}
+
+export function defaultQualityForProbe(probe: WorkerProbe): QualityMode {
+  return defaultQualityForDevice(probe.device, probe.qualities.includes('max'))
+}
+
+/** Platform/app labels exposed by preload without granting Node access. */
+export interface PlatformInfo {
+  platform: AppPlatform
+  appName: string
+  showInFolderLabel: string
+  isCommunityBuild: boolean
+  productionQualities: QualityMode[]
+  /** Optional derivative-build credit injected by packaging metadata. */
+  maintainerCredit?: string
 }
 
 /** State of the Python environment, reported before/after setup. */

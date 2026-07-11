@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Electron main process: window lifecycle, the safe `stem://` media protocol,
  * file dialogs, ffprobe probing, and separation-job orchestration. All
@@ -7,15 +8,20 @@
 
 import { app, BrowserWindow, Menu, dialog, ipcMain, shell, protocol, net } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
-import { join, dirname, extname } from 'path'
+import { join, dirname, extname, isAbsolute } from 'path'
 import { pathToFileURL } from 'url'
+import { readFileSync } from 'fs'
+import { spawnSync } from 'child_process'
 
-import { probe, isSupportedInput } from './ffmpeg'
-import { runJob, cancelJob, probeWorker } from './job'
-import { findReadyPython } from './pythonEnv'
+import { probe, isSupportedInput, ffmpegPath, ffprobePath } from './ffmpeg'
+import { runJob, cancelJob, cancelAllJobs, probeWorker } from './job'
+import { findReadyPython, repairPrivateRuntime, setupUserVenv } from './pythonEnv'
+import { terminateAllProcesses } from './process'
 import {
   AUDIO_EXTENSIONS,
   VIDEO_EXTENSIONS,
+  productionQualitiesForPlatform,
+  type AppPlatform,
   type SeparateOptions,
   type PythonEnvStatus,
   type WorkerProbe
@@ -24,13 +30,48 @@ import { version as APP_VERSION } from '../../package.json'
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL
 
-// App identity. Set the display name early so the macOS menu bar, About panel,
-// and dock read "Stem Studio" rather than "Electron". The userData path is
-// pinned to a stable "stem-studio" folder *before* the name change so the
-// managed Python venv and model cache stay at a fixed location regardless of
-// the display name (changing the name would otherwise move userData).
-app.setPath('userData', join(app.getPath('appData'), 'stem-studio'))
-app.setName('Stem Studio')
+interface BuildMetadata {
+  isCommunityBuild?: boolean
+  displayName?: string
+  userDataFolder?: string
+  appId?: string
+  maintainer?: string
+}
+
+function packagedBuildMetadata(): BuildMetadata {
+  if (!app.isPackaged) return {}
+  try {
+    const pkg = JSON.parse(
+      readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')
+    ) as { distribution?: BuildMetadata }
+    return pkg.distribution ?? {}
+  } catch {
+    return {}
+  }
+}
+
+// Generic builds contain no downstream branding. The community overlay injects
+// identity/data/credit metadata into the packaged package.json.
+const buildMetadata = packagedBuildMetadata()
+const isCommunityBuild = buildMetadata.isCommunityBuild === true
+const displayName = buildMetadata.displayName ?? 'Stem Studio'
+const dataFolder = buildMetadata.userDataFolder ?? 'stem-studio'
+const platformName: AppPlatform = process.platform === 'darwin'
+  ? 'mac'
+  : process.platform === 'win32'
+    ? 'windows'
+    : 'linux'
+const userDataOverride = process.env.STEMSTUDIO_USER_DATA?.trim()
+if (userDataOverride && !isAbsolute(userDataOverride)) {
+  throw new Error('STEMSTUDIO_USER_DATA must be an absolute path.')
+}
+app.setPath('userData', userDataOverride ?? join(app.getPath('appData'), dataFolder))
+app.setName(displayName)
+if (process.platform === 'win32') {
+  app.setAppUserModelId(
+    buildMetadata.appId ?? 'com.wassermanproductions.stemstudio'
+  )
+}
 
 let mainWindow: BrowserWindow | null = null
 
@@ -39,7 +80,14 @@ let mainWindow: BrowserWindow | null = null
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'stem',
-    privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, bypassCSP: false }
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      bypassCSP: false
+    }
   }
 ])
 
@@ -49,9 +97,9 @@ function createWindow(): void {
     height: 760,
     minWidth: 720,
     minHeight: 600,
-    title: 'Stem Studio',
+    title: displayName,
     backgroundColor: '#08090c',
-    titleBarStyle: 'hiddenInset',
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
     // Linux has no packaged app icon by default; point it at build/icon.png.
     // (macOS/Windows use the icons wired in electron-builder.yml.)
     ...(process.platform === 'linux'
@@ -166,24 +214,77 @@ function buildAppMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (process.argv.includes('--setup-runtime-smoke')) {
+    try {
+      const python = await setupUserVenv((detail) => process.stdout.write(`${detail}\n`))
+      process.stdout.write(`${JSON.stringify({ ok: true, python })}\n`)
+      app.exit(0)
+    } catch (error) {
+      process.stderr.write(`Managed runtime smoke failed: ${(error as Error).message}\n`)
+      app.exit(1)
+    }
+    return
+  }
+  if (process.argv.includes('--smoke-runtime')) {
+    try {
+      const tools: Array<[string, string, string[]]> = [
+        ['ffmpeg', await ffmpegPath(), ['-version']],
+        ['ffprobe', await ffprobePath(), ['-version']]
+      ]
+      if (process.platform === 'win32') {
+        tools.push([
+          'uv',
+          join(process.resourcesPath, 'runtime-bootstrap', 'windows', 'uv.exe'),
+          ['--version']
+        ])
+      }
+      for (const [name, executable, args] of tools) {
+        const result = spawnSync(executable, args, { windowsHide: true, encoding: 'utf8' })
+        if (result.status !== 0) {
+          throw new Error(`${name} runtime smoke failed (${executable}): ${result.stderr}`)
+        }
+      }
+      process.stdout.write(`${JSON.stringify({ ok: true, tools: tools.map(([, path]) => path) })}\n`)
+      app.exit(0)
+    } catch (error) {
+      process.stderr.write(`Runtime smoke failed: ${(error as Error).message}\n`)
+      app.exit(1)
+    }
+    return
+  }
+
   // macOS "About Stem Studio" panel — identity, version, credit.
   app.setAboutPanelOptions({
-    applicationName: 'Stem Studio',
+    applicationName: displayName,
     applicationVersion: app.getVersion(),
     version: '',
     copyright: '© 2026 Sam Wasserman',
-    credits: 'Created by Sam Wasserman — wassermanproductions.com · wasserman.ai'
+    credits: [
+      'Created by Sam Wasserman — wassermanproductions.com · wasserman.ai',
+      buildMetadata.maintainer
+    ].filter(Boolean).join('\n')
   })
 
-  buildAppMenu()
+  if (process.platform === 'win32') Menu.setApplicationMenu(null)
+  else buildAppMenu()
 
-  // `stem://host/<url-encoded-abs-path>` -> file on disk. We decode the path
-  // from the URL pathname; the host segment is ignored.
-  protocol.handle('stem', (request) => {
+  // Query encoding preserves drive letters and UNC prefixes. The pathname
+  // fallback keeps preview URLs generated by older builds working.
+  protocol.handle('stem', async (request) => {
     const url = new URL(request.url)
-    const abs = decodeURIComponent(url.pathname)
-    return net.fetch(pathToFileURL(abs).toString())
+    const abs = url.searchParams.get('path') ?? decodeURIComponent(url.pathname)
+    if (!isAbsolute(abs)) return new Response('Invalid media path', { status: 400 })
+    const media = await net.fetch(pathToFileURL(abs).toString())
+    const headers = new Headers(media.headers)
+    headers.set('Access-Control-Allow-Origin', '*')
+    headers.set('Cross-Origin-Resource-Policy', 'cross-origin')
+    headers.set('X-Content-Type-Options', 'nosniff')
+    return new Response(media.body, {
+      status: media.status,
+      statusText: media.statusText,
+      headers
+    })
   })
 
   createWindow()
@@ -194,6 +295,24 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+let quitCleanupStarted = false
+let quitCleanupComplete = false
+app.on('before-quit', (event) => {
+  if (quitCleanupComplete) return
+  event.preventDefault()
+  if (quitCleanupStarted) return
+  quitCleanupStarted = true
+  void (async () => {
+    try {
+      await cancelAllJobs()
+      await terminateAllProcesses()
+    } finally {
+      quitCleanupComplete = true
+      app.quit()
+    }
+  })()
 })
 
 /* -------------------------------- IPC ---------------------------------- */
@@ -257,40 +376,55 @@ ipcMain.handle('pythonStatus', async (): Promise<PythonEnvStatus> => {
   return py ? { ready: true, venvPath: py } : { ready: false }
 })
 
-// Device/engine probe — the renderer uses this to default the quality tier
-// (cuda→max, mps→high, cpu→fast). Non-throwing; returns a cpu fallback if the
+// Device/engine probe — the renderer defaults GPU devices to high and CPU to
+// fast. Non-throwing; returns a cpu fallback if the
 // worker isn't ready yet.
 ipcMain.handle('workerProbe', async (): Promise<WorkerProbe> => {
   return probeWorker()
 })
 
-// Start a separation job. Progress/result/error are pushed over events keyed
-// by jobId.
-ipcMain.handle('separate', async (_e, opts: SeparateOptions) => {
-  try {
-    const result = await runJob(opts, {
+// Start a separation job. The renderer allocates the id before showing the
+// progress screen, so even an immediate Cancel targets real work.
+ipcMain.handle('separate', (_e, jobId: string, opts: SeparateOptions) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
+    return { ok: false, error: 'Invalid job identifier.' }
+  }
+  if (opts.quality && !productionQualitiesForPlatform(platformName).includes(opts.quality)) {
+    return { ok: false, error: `Quality "${opts.quality}" is unavailable on Windows.` }
+  }
+  const result = runJob(jobId, opts, {
       onProgress: (p) => send('job:progress', p),
       onSetup: (detail) => send('job:setup', detail)
     })
-    send('job:done', result)
-    return { ok: true, jobId: result.jobId }
-  } catch (err) {
+  void result.then((completed) => {
+    send('job:done', completed)
+  }).catch((err: unknown) => {
     const message = (err as Error).message
     if (message === 'Cancelled') {
-      send('job:cancelled')
-      return { ok: false, cancelled: true }
+      send('job:cancelled', jobId)
+    } else {
+      send('job:error', { jobId, message, detail: (err as Error).stack })
     }
-    send('job:error', { message, detail: (err as Error).stack })
-    return { ok: false, error: message }
-  }
+  })
+  return { ok: true, jobId }
 })
 
-ipcMain.handle('cancel', (_e, jobId: string) => {
-  cancelJob(jobId)
+ipcMain.handle('cancel', async (_e, jobId: string) => {
+  await cancelJob(jobId)
   return true
 })
 
-// Reveal a file/folder in Finder.
+ipcMain.handle('repairRuntime', async () => {
+  try {
+    await cancelAllJobs()
+    await repairPrivateRuntime()
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: (error as Error).message }
+  }
+})
+
+// Reveal a file/folder in Finder or File Explorer.
 ipcMain.handle('revealInFinder', (_e, path: string) => {
   shell.showItemInFolder(path)
   return true
@@ -305,6 +439,15 @@ ipcMain.handle('versions', () => ({
   app: APP_VERSION,
   electron: process.versions.electron,
   node: process.versions.node
+}))
+
+ipcMain.handle('platformInfo', () => ({
+  platform: platformName,
+  appName: displayName,
+  showInFolderLabel: process.platform === 'darwin' ? 'Reveal in Finder' : 'Show in Folder',
+  isCommunityBuild,
+  productionQualities: [...productionQualitiesForPlatform(platformName)],
+  maintainerCredit: buildMetadata.maintainer
 }))
 
 // Open an allowlisted external link (credit footer, About panel) in the system

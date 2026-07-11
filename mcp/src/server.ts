@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * The stem-studio MCP server: registers the six pipeline tools on an McpServer
  * and wires long-running work through the JobRegistry. Transport-agnostic — the
@@ -6,6 +7,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import packageJson from '../package.json' with { type: 'json' }
 
 import { probe } from './ffmpeg.js'
 import { startSeparation } from './pipeline.js'
@@ -13,7 +15,7 @@ import { setupStatus, startSetup } from './setup.js'
 import { JobRegistry, type JobSnapshot } from './jobs.js'
 import type { PipelineStage, SeparationOutputs } from './types.js'
 
-const VERSION = '1.0.0'
+const VERSION = packageJson.version
 
 /** Rough stage weights so a single 0..100 percent can be reported to clients. */
 const STAGE_BASE: Record<PipelineStage, number> = {
@@ -56,9 +58,29 @@ function fail(message: string) {
   }
 }
 
-export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
+export function createServer(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): McpServer {
   const server = new McpServer({ name: 'stem-studio', version: VERSION })
   const jobs = new JobRegistry()
+  const testEnginesEnabled = platform !== 'win32'
+    ? env.STEMSTUDIO_ENABLE_TEST_ENGINES !== '0'
+    : env.STEMSTUDIO_ENABLE_TEST_ENGINES === '1'
+  const unlicensedEnginesEnabled = platform !== 'win32'
+    ? env.STEMSTUDIO_ENABLE_UNLICENSED_ENGINES !== '0'
+    : env.STEMSTUDIO_RESEARCH_BUILD === '1' &&
+      env.STEMSTUDIO_ENABLE_UNLICENSED_ENGINES === '1'
+  const engineSchema = unlicensedEnginesEnabled
+    ? testEnginesEnabled
+      ? z.enum(['tiger', 'mvsep', 'stub'])
+      : z.enum(['tiger', 'mvsep'])
+    : testEnginesEnabled
+      ? z.enum(['tiger', 'stub'])
+      : z.literal('tiger')
+  const qualitySchema = unlicensedEnginesEnabled
+    ? z.enum(['fast', 'high', 'max'])
+    : z.enum(['fast', 'high'])
 
   /**
    * Send a notifications/progress message if the caller supplied a
@@ -128,8 +150,8 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
         '_SFX.wav plus <basename>_MARRIED.wav (the conformed original mix). For video ' +
         'inputs, multitrack_video:true also remuxes a <basename>_STEMS.mov with the 3 ' +
         'stems as labelled audio tracks. input_path must be a LOCAL FILE PATH. ' +
-        'RUNTIME: minutes — the stub engine is seconds; TIGER on MPS is roughly ' +
-        'real-time-ish, and much slower on CPU; quality "high"/"max" multiply that. ' +
+        'RUNTIME: minutes — TIGER on an accelerator is roughly real-time-ish, ' +
+        'and much slower on CPU; quality "high" takes longer. ' +
         'With wait:true (default) the call blocks to completion and emits progress ' +
         'notifications — use a generous client timeout. With wait:false it returns a ' +
         'job_id immediately; poll check_job. Requires a ready Python env (see ' +
@@ -140,14 +162,24 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
           .string()
           .optional()
           .describe('Directory for the output WAVs/.mov. Default: alongside the input.'),
-        quality: z
-          .enum(['fast', 'high', 'max'])
+        quality: qualitySchema
           .optional()
-          .describe('fast (default), high (TTA ensemble), or max. Passed to the worker as-is.'),
-        engine: z
-          .string()
+          .describe(
+            unlicensedEnginesEnabled
+              ? 'fast (default), high (TTA ensemble), or legacy max (dual-engine blend).'
+              : 'fast (default) or high (TTA ensemble).'
+          ),
+        engine: engineSchema
           .optional()
-          .describe('Engine: tiger (default), stub (torch-free, for tests), or mvsep. Passed as-is.'),
+          .describe(
+            unlicensedEnginesEnabled
+              ? testEnginesEnabled
+                ? 'Engine: tiger, mvsep, or the test-only stub enabled by the CI harness.'
+                : 'Engine: tiger or legacy mvsep.'
+              : testEnginesEnabled
+                ? 'Engine: tiger, or the test-only stub enabled by the CI harness.'
+                : 'Licensed Windows production engine: tiger.'
+          ),
         multitrack_video: z
           .boolean()
           .optional()
@@ -202,7 +234,7 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
         },
         (err: unknown) => {
           const msg = (err as Error).message ?? String(err)
-          if (msg === 'Cancelled') jobs.cancel(job.jobId)
+          if (msg === 'Cancelled') void jobs.cancel(job.jobId)
           else jobs.fail(job.jobId, msg)
           throw err
         }
@@ -266,7 +298,7 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
       }
     },
     async ({ job_id }) => {
-      const status = jobs.cancel(job_id)
+      const status = await jobs.cancel(job_id)
       if (status === null) return fail(`Unknown job_id: ${job_id}`)
       return ok({ job_id, status })
     }
@@ -282,8 +314,7 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
         'presence, whether torch/numpy/soundfile import, the compute device ' +
         '(from the worker --probe if available, else inline torch detection), and ' +
         'model-cache presence. Fast. Call before separate_stems; if not ready, run ' +
-        'setup_environment. Resolves python from $STEMSTUDIO_PYTHON else ' +
-        '<repo>/.venv/bin/python.',
+        'setup_environment. Installed builds share the app\'s private runtime and model cache.',
       inputSchema: {}
     },
     async () => {
@@ -298,8 +329,8 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     {
       title: 'Create the Python environment',
       description:
-        'Create the venv (from a resolved python3 >= 3.10) and pip-install ' +
-        'python/requirements.txt (numpy, scipy, soundfile, torch, ...). PyTorch is ' +
+        'Create the private worker environment. Windows uses bundled uv, pinned ' +
+        'CPython 3.12.10, and a hashed dependency lock; macOS/Linux use python3. PyTorch is ' +
         'a large download — RUNTIME is typically several minutes on first run. With ' +
         'wait:true (default) blocks and emits progress notifications; with ' +
         'wait:false returns a job_id to poll via check_job. Idempotent-ish: reuses ' +
@@ -331,7 +362,7 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
         },
         (err: unknown) => {
           const msg = (err as Error).message ?? String(err)
-          if (msg === 'Cancelled') jobs.cancel(job.jobId)
+          if (msg === 'Cancelled') void jobs.cancel(job.jobId)
           else jobs.fail(job.jobId, msg)
           throw err
         }

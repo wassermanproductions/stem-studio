@@ -1,3 +1,4 @@
+# Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 node_modules/
 out/
 dist/
@@ -16,3 +17,7 @@ __pycache__/
 cache/
 # Generated eval material.
 python/eval/data/
+build/runtime/windows/
+build/runtime/.windows-download/
+build/runtime/macos-arm64/
+build/runtime/.macos-build/

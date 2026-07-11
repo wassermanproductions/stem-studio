@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import { describe, it, expect } from 'vitest'
 import { JobRegistry, isTerminal } from '../src/jobs.js'
 
@@ -61,40 +62,41 @@ describe('JobRegistry', () => {
     expect(s.result).toEqual({ a: 1 })
   })
 
-  it('cancel() invokes the handle and marks cancelled', () => {
+  it('cancel() awaits the handle before marking cancelled', async () => {
     const r = new JobRegistry()
     const j = r.create('separate')
     let killed = false
-    r.setCancel(j.jobId, () => {
+    r.setCancel(j.jobId, async () => {
+      await Promise.resolve()
       killed = true
     })
-    expect(r.cancel(j.jobId)).toBe('cancelled')
+    expect(await r.cancel(j.jobId)).toBe('cancelled')
     expect(killed).toBe(true)
     expect(r.snapshot(j.jobId)?.status).toBe('cancelled')
   })
 
-  it('cancel() after done returns the existing terminal status, no re-cancel', () => {
+  it('cancel() after done returns the existing terminal status, no re-cancel', async () => {
     const r = new JobRegistry()
     const j = r.create('separate')
     r.finish(j.jobId, {})
     let killed = false
-    r.setCancel(j.jobId, () => {
+    r.setCancel(j.jobId, async () => {
       killed = true
     })
-    expect(r.cancel(j.jobId)).toBe('done')
+    expect(await r.cancel(j.jobId)).toBe('done')
     expect(killed).toBe(false)
   })
 
-  it('unknown ids: snapshot null, cancel null', () => {
+  it('unknown ids: snapshot null, cancel null', async () => {
     const r = new JobRegistry()
     expect(r.snapshot('nope')).toBeNull()
-    expect(r.cancel('nope')).toBeNull()
+    expect(await r.cancel('nope')).toBeNull()
   })
 
   it('snapshot omits the cancel handle', () => {
     const r = new JobRegistry()
     const j = r.create('separate')
-    r.setCancel(j.jobId, () => {})
+    r.setCancel(j.jobId, async () => {})
     const s = r.snapshot(j.jobId)!
     expect('cancel' in s).toBe(false)
   })

@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Constants and types the MCP server needs, mirrored from the app's
  * `src/shared/types.ts`. This package cannot import Electron/app code, so the
@@ -12,15 +13,11 @@ export const ENGINE_SAMPLE_RATE = 44_100
 export const OUTPUT_SAMPLE_RATE = 48_000
 export const OUTPUT_BIT_DEPTH = 24
 
-/**
- * Separation engines. `tiger` is the real TIGER-DnR ML model; `stub` is the
- * torch-free band-splitter. `mvsep` may be added by a concurrent worker change
- * and is passed through without hard validation — the worker is the authority.
- */
-export type EngineName = 'tiger' | 'stub' | 'mvsep'
+/** Execution engines. Public Windows MCP schemas expose TIGER only. */
+export type EngineName = 'tiger' | 'mvsep' | 'stub'
 export const DEFAULT_ENGINE: EngineName = 'tiger'
 
-/** Quality modes. `max` may be added by a concurrent worker change; passed through. */
+/** Cross-platform quality modes; public Windows schemas omit `max`. */
 export type QualityMode = 'fast' | 'high' | 'max'
 export const DEFAULT_QUALITY: QualityMode = 'fast'
 

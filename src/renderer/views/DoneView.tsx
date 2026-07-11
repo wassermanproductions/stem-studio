@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo } from 'react'
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
+import React, { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { LANE_KINDS, LANE_LABELS, seekTimeFromX, playheadX, formatClock, type LaneKind } from '@shared/audioLanes'
 import { useLaneAudio, type LaneSource } from './useLaneAudio'
 import { LaneCanvas } from './LaneCanvas'
+import { displayBasename } from '@shared/paths'
 
 const LANE_COLOR: Record<LaneKind, string> = {
   married: 'var(--stem-married)',
@@ -22,6 +24,13 @@ const SOLO_KEYS: Record<string, LaneKind> = {
 export function DoneView(): React.JSX.Element {
   const result = useStore((s) => s.result)
   const reset = useStore((s) => s.reset)
+  const [showInFolderLabel, setShowInFolderLabel] = useState('Show in Folder')
+
+  useEffect(() => {
+    void window.stemstudio.platformInfo().then((info) => {
+      setShowInFolderLabel(info.showInFolderLabel)
+    })
+  }, [])
 
   const sources: LaneSource[] = useMemo(() => {
     if (!result) return []
@@ -116,7 +125,7 @@ export function DoneView(): React.JSX.Element {
                   {src.label}
                 </div>
                 <div className="lane-file" title={src.path}>
-                  {src.path.split('/').pop()}
+                  {displayBasename(src.path)}
                 </div>
               </div>
 
@@ -165,9 +174,9 @@ export function DoneView(): React.JSX.Element {
                 <button
                   className="lane-btn reveal"
                   onClick={() => window.stemstudio.revealInFinder(src.path)}
-                  title="Reveal in Finder"
+                  title={showInFolderLabel}
                 >
-                  Reveal
+                  {showInFolderLabel}
                 </button>
               </div>
             </div>
@@ -182,7 +191,7 @@ export function DoneView(): React.JSX.Element {
                 Multitrack video
               </div>
               <div className="lane-file" title={result.multitrackVideo}>
-                {result.multitrackVideo.split('/').pop()}
+                {displayBasename(result.multitrackVideo)}
               </div>
             </div>
             <div className="hint">Original picture + the three stems as labelled tracks — ready for your NLE.</div>
@@ -191,7 +200,7 @@ export function DoneView(): React.JSX.Element {
                 className="lane-btn reveal"
                 onClick={() => window.stemstudio.revealInFinder(result.multitrackVideo!)}
               >
-                Reveal
+                {showInFolderLabel}
               </button>
             </div>
           </div>

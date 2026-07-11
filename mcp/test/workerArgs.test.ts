@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import { describe, it, expect } from 'vitest'
 import { workerArgs, workerProbeArgs } from '../src/workerArgs.js'
 
@@ -29,16 +30,15 @@ describe('workerArgs', () => {
     expect(args[args.indexOf('--engine') + 1]).toBe('stub')
   })
 
-  it('passes unknown engine/quality strings through without validation', () => {
-    // Concurrent worker change may add these; the builder must not reject them.
+  it('passes the test-only stub engine and high quality', () => {
     const args = workerArgs({
       inputWav: '/i.wav',
       outDir: '/o',
-      engine: 'mvsep',
-      quality: 'max'
+      engine: 'stub',
+      quality: 'high'
     })
-    expect(args[args.indexOf('--engine') + 1]).toBe('mvsep')
-    expect(args[args.indexOf('--quality') + 1]).toBe('max')
+    expect(args[args.indexOf('--engine') + 1]).toBe('stub')
+    expect(args[args.indexOf('--quality') + 1]).toBe('high')
   })
 
   it('adds --polish-dialogue only when requested', () => {

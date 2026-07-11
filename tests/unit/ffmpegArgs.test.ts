@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import { describe, it, expect } from 'vitest'
 import {
   probeArgs,
@@ -84,6 +85,9 @@ describe('remuxMultitrackArgs', () => {
     expect(a).toEqual(expect.arrayContaining(['-metadata:s:a:0', 'title=Dialogue']))
     expect(a).toEqual(expect.arrayContaining(['-metadata:s:a:1', 'title=Music']))
     expect(a).toEqual(expect.arrayContaining(['-metadata:s:a:2', 'title=SFX']))
+    expect(a).toEqual(expect.arrayContaining(['-metadata:s:a:0', 'handler_name=Dialogue']))
+    expect(a).toEqual(expect.arrayContaining(['-metadata:s:a:1', 'handler_name=Music']))
+    expect(a).toEqual(expect.arrayContaining(['-metadata:s:a:2', 'handler_name=SFX']))
     expect(a[a.length - 1]).toBe('/o/CLIP_STEMS.mov')
   })
 })

@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Spawns the Python separation worker and parses its line-JSON stdout. Mirrors
  * the app's `src/main/job.ts` runWorker: detached process group so the whole
@@ -8,6 +9,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { LineParser } from './workerProtocol.js'
 import { workerRoot } from './resolve.js'
 import type { WorkerStage } from './types.js'
+import { childSpawnOptions, killTree, trackProcess } from './process.js'
 
 export interface WorkerRunHandle {
   /** The spawned child, so callers can register it for cancellation. */
@@ -35,16 +37,21 @@ export function runWorker(
   } = {}
 ): WorkerRunHandle {
   const root = workerRoot(opts.env ?? process.env)
-  const child = spawn(py, args, {
-    cwd: root,
-    env: {
-      ...(opts.env ?? process.env),
-      PYTHONPATH: root,
-      PYTHONUNBUFFERED: '1'
-    },
-    detached: true,
-    stdio: ['ignore', 'pipe', 'pipe']
-  })
+  const child = trackProcess(spawn(
+    py,
+    args,
+    childSpawnOptions({
+      cwd: root,
+      env: {
+        ...(opts.env ?? process.env),
+        PYTHONPATH: root,
+        PYTHONUNBUFFERED: '1',
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8'
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+  ))
 
   const result = new Promise<Record<string, string>>((resolve, reject) => {
     const parser = new LineParser()
@@ -91,15 +98,4 @@ export function runWorker(
 }
 
 /** Kill a spawned child's whole process group (detached => negative pid). */
-export function killTree(child: ChildProcess | undefined): void {
-  if (!child || !child.pid) return
-  try {
-    process.kill(-child.pid, 'SIGKILL')
-  } catch {
-    try {
-      child.kill('SIGKILL')
-    } catch {
-      /* already gone */
-    }
-  }
-}
+export { killTree }

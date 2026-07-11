@@ -1,3 +1,4 @@
+# Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 """TIGER-DnR separation engine.
 
 Wraps the vendored TIGER-DnR model (``vendor/tiger``) behind the ``Engine``
@@ -24,6 +25,7 @@ from __future__ import annotations
 
 import os
 import sys
+import hashlib
 from typing import Callable, Dict
 
 import numpy as np
@@ -34,6 +36,11 @@ from .device import select_device
 ProgressCb = Callable[[str, float], None]
 
 HF_REPO = "JusperLee/TIGER-DnR"
+HF_REVISION = "b7a59560bbca10febbcd46fb01600f868e587f57"
+MODEL_FILES = {
+    "config.json": "ba9d2f833bf2f3a5855a35d0ccd11c786f6b92f1a482d84404bc4673edb29b54",
+    "model.safetensors": "dd1c696e72f6adea0085ef1af640882a8260519ad666422835e387a5b4abdd2a",
+}
 MODEL_SAMPLE_RATE = 44_100
 
 # The vendored TIGERDNR runs its own internal overlap-add windowing inside every
@@ -53,6 +60,34 @@ _CUDA_WHOLE_FILE_BLOCK_SECONDS = 3600.0
 def _log(msg: str) -> None:
     """Diagnostics go to stderr — stdout is the JSON protocol channel."""
     print(f"[engine_tiger] {msg}", file=sys.stderr, flush=True)
+
+
+def _sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _verified_snapshot(cache_dir: str | None) -> str:
+    from huggingface_hub import snapshot_download
+
+    snapshot = snapshot_download(
+        repo_id=HF_REPO,
+        revision=HF_REVISION,
+        cache_dir=cache_dir,
+        allow_patterns=list(MODEL_FILES),
+    )
+    for filename, expected in MODEL_FILES.items():
+        path = os.path.join(snapshot, filename)
+        actual = _sha256(path)
+        if actual != expected:
+            raise RuntimeError(
+                f"TIGER asset checksum mismatch for {filename}: "
+                f"expected {expected}, received {actual}"
+            )
+    return snapshot
 
 
 # TIGER-DnR is an extremely launch-bound model on CUDA: a single forward issues
@@ -147,12 +182,11 @@ class EngineTiger:
 
         # Downloads on first run (into cache_dir), then loads from cache. The
         # checkpoint is small (~17 MB) but the download can still take a moment.
-        _log(f"loading {HF_REPO} (cache_dir={self.cache_dir})")
-        kwargs = {}
+        _log(f"loading {HF_REPO}@{HF_REVISION} (cache_dir={self.cache_dir})")
         if self.cache_dir:
             os.makedirs(self.cache_dir, exist_ok=True)
-            kwargs["cache_dir"] = self.cache_dir
-        model = TIGERDNR.from_pretrained(HF_REPO, **kwargs)
+        snapshot = _verified_snapshot(self.cache_dir)
+        model = TIGERDNR.from_pretrained(snapshot)
         progress_cb("loading", 80.0)
 
         model.eval().to(self._device)

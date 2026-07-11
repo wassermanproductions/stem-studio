@@ -1,3 +1,4 @@
+<!-- Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md. -->
 # Stem Studio MCP — drive the separation pipeline from an AI agent
 
 `stem-studio-mcp` is a small [MCP](https://modelcontextprotocol.io) **stdio** server that lets any MCP client — **Claude Code, Codex, or any other** — run the Stem Studio pipeline **headlessly**: probe a file, separate a married soundtrack into Dialogue / Music / SFX stems, and (for video) remux a multitrack `.mov`. **No Electron and no running app are involved** — the server spawns `ffmpeg`/`ffprobe` and the Python separation worker itself.
@@ -21,7 +22,8 @@ The separation pipeline is: **probe → extract audio to a temp job dir (44.1 kH
 
 ## Requirements
 
-- **Node ≥ 20** (the server) and **ffmpeg / ffprobe** on the machine (`brew install ffmpeg`). ffmpeg is resolved from `PATH` plus `/opt/homebrew/bin`, `/usr/bin`, `/usr/local/bin`.
+- **Source checkout:** Node ≥ 20 runs the stdio server.
+- **Installed app:** use the packaged launcher described below; it runs the bridge through Electron's embedded Node, so no separate Node installation is required. Packaged builds share the app's worker, FFmpeg/FFprobe where bundled, model cache, and private Python runtime.
 - A **Python worker environment** — a venv with the worker's deps. Check it with the `setup_status` tool and create it with `setup_environment`, or point `STEMSTUDIO_PYTHON` at an existing venv python.
 
 ## Environment variables
@@ -31,8 +33,13 @@ All optional — sensible fallbacks are built in.
 | Var | Meaning | Fallback |
 |---|---|---|
 | `STEMSTUDIO_ROOT` | Repo root that contains `python/` (the worker package). | This package's own repo (`mcp/..`). |
-| `STEMSTUDIO_PYTHON` | Path to the venv python that runs the worker. | `<repo>/.venv/bin/python`. |
-| `STEMSTUDIO_CACHE` | Model-weights cache dir. | `~/.stemstudio/models`. |
+| `STEMSTUDIO_PYTHON` | Optional override for the worker Python. | Installed app private runtime; source checkout `<repo>/.venv/bin/python`. |
+| `STEMSTUDIO_RESOURCES` | Installed Electron `resources` directory. | Auto-detected when the MCP bundle is packaged. |
+| `STEMSTUDIO_USER_DATA` | Shared app data directory; useful for isolated CI. | Electron's distribution-specific user-data root when packaged. |
+| `STEMSTUDIO_USER_DATA_FOLDER` | Distribution-specific folder name for an MCP launcher. Packaged builds read the same value from `stem-studio-distribution.json`. | `stem-studio`. |
+| `STEMSTUDIO_CACHE` | Model-weights cache dir. | Packaged app's `models/`; source checkout `~/.stemstudio/models`. |
+| `STEMSTUDIO_WINDOWS_PROFILE` | Windows setup profile: `cpu` or experimental `cuda`. | `cpu`; failed CUDA setup automatically rebuilds the CPU profile. |
+| `SMOKE_SEPARATION_TIMEOUT_MS` | Integration-smoke timeout for a long `separate_stems` call. | 20 minutes for TIGER, 5 minutes for the stub. |
 
 The worker is always launched with `PYTHONPATH=<repo>/python`.
 
@@ -46,10 +53,23 @@ npm install
 npm run build        # tsc/tsup -> dist/index.js  (bin: stem-studio-mcp)
 npm run typecheck    # strict TS, no emit
 npm test             # Vitest unit tests (arg builders, worker parser, job registry, env resolution)
-npm run smoke        # build, then drive the server over stdio end-to-end with the stub engine
+npm run smoke        # build, then drive the server end-to-end with the CI-only stub
 ```
 
 Point registrations at the built entry: **`<abs repo path>/mcp/dist/index.js`**.
+
+### Installed launcher (no external Node)
+
+Every packaged app includes the bridge at `resources/mcp/index.js` and a
+launcher beside it. Register the launcher, not the JavaScript file:
+
+- Windows: `<chosen install directory>\resources\mcp\stem-studio-mcp.cmd`
+- macOS: `<Stem Studio.app>/Contents/Resources/mcp/stem-studio-mcp`
+- Linux unpacked/AppImage resource tree: `resources/mcp/stem-studio-mcp`
+
+The launcher sets `ELECTRON_RUN_AS_NODE=1`, invokes the packaged Electron
+executable, and automatically discovers the adjacent distribution descriptor,
+worker, media tools, and the same user-data/model/runtime paths as the GUI.
 
 ## Connect
 
@@ -111,15 +131,15 @@ Six tools. Every path is a **local file path** (never a URL or stream); every ou
 | Tool | Input | Does |
 |---|---|---|
 | `probe_media` | `path` | Returns `duration`, `sample_rate`, `channels`, `has_video`, `format`. Fast (<1s). Errors clearly if the file is missing / has no audio / ffprobe is absent. |
-| `separate_stems` | `input_path`, `output_dir?`, `quality?` (`fast`\|`high`\|`max`, default `fast`), `engine?` (`tiger`\|`mvsep`\|`stub`), `multitrack_video?`, `polish_dialogue?` (default `false`), `wait?` (default `true`) | Runs the full pipeline. Delivers `_DIALOGUE/_MUSIC/_SFX.wav` + `_MARRIED.wav` (and `_STEMS.mov` for video when `multitrack_video`). `polish_dialogue` adds an optional pass that reduces music/effects bleed in the dialogue stem (the bleed is folded into effects, so the stems still sum exactly). `wait:true` blocks + emits progress notifications; `wait:false` returns a `job_id`. |
+| `separate_stems` | `input_path`, `output_dir?`, `quality?` (`fast`\|`high` on Windows; existing macOS/Linux also expose `max`), `engine?` (`tiger` on Windows; existing macOS/Linux also expose `mvsep`), `multitrack_video?`, `polish_dialogue?` (default `false`), `wait?` (default `true`) | Runs the local separation pipeline. Delivers `_DIALOGUE/_MUSIC/_SFX.wav` + `_MARRIED.wav` (and `_STEMS.mov` for video when `multitrack_video`). `polish_dialogue` adds an optional pass that reduces music/effects bleed in the dialogue stem (the bleed is folded into effects, so the stems still sum exactly). `wait:true` blocks + emits progress notifications; `wait:false` returns a `job_id`. |
 | `check_job` | `job_id` | Status (`running`/`done`/`error`/`cancelled`), `stage`, `percent`, and on `done` the output paths. |
 | `cancel_job` | `job_id` | Kills the process tree and cleans temp. Returns the resulting status. |
 | `setup_status` | — | Readiness report: venv python present, `torch`/`numpy`/`soundfile` importable, compute device, model-cache presence. |
-| `setup_environment` | `wait?` (default `true`) | Creates the venv (python3 ≥ 3.10) and pip-installs `python/requirements.txt`, streaming progress. Long-running; supports `wait:false` + `check_job`. |
+| `setup_environment` | `wait?` (default `true`) | On Windows, provisions pinned CPython 3.12.10 and the hashed CPU lock with bundled uv; otherwise creates the existing source venv. Long-running; supports `wait:false` + `check_job`. |
 
-**Runtimes / timeouts.** `probe_media`, `check_job`, `cancel_job`, `setup_status` are sub-second. `separate_stems` runs in **minutes** — the `stub` engine is seconds; a neural engine on Apple-silicon MPS is roughly real-time-ish and much slower on CPU; `quality` `high`/`max` multiply that. `setup_environment` is **several minutes** on first run (PyTorch is a large download). For the long tools, either give the `wait:true` call a generous client timeout, or use `wait:false` and poll `check_job`.
+**Runtimes / timeouts.** `probe_media`, `check_job`, `cancel_job`, and `setup_status` are sub-second. `separate_stems` runs in **minutes** — TIGER on a GPU is roughly real-time-ish and much slower on CPU; `high` takes longer. `setup_environment` is several minutes on first run. For long tools, give `wait:true` a generous timeout or use `wait:false` and poll `check_job`.
 
-> `quality:'max'` and `engine:'mvsep'` may not exist in every worker snapshot; the server passes the flags straight through and surfaces the worker's error cleanly rather than pre-validating.
+Public Windows MCP schemas expose only TIGER Fast/High. The existing macOS/Linux schema retains MVSEP/Max and the dependency-light stub. Windows tests enable the stub explicitly; Windows source research builds must set both `STEMSTUDIO_RESEARCH_BUILD=1` and `STEMSTUDIO_ENABLE_UNLICENSED_ENGINES=1` explicitly.
 
 ---
 
@@ -163,7 +183,7 @@ cancel_job { "job_id": "…" }     // if you need to abort
 
 | Symptom | Cause & fix |
 |---|---|
-| `probe_media` errors "Could not run ffprobe" | ffmpeg isn't installed / on PATH. `brew install ffmpeg`. |
+| `probe_media` errors "Could not run ffprobe" | Confirm the installed resource path or set `STEMSTUDIO_FFPROBE`; source checkouts can install ffmpeg on PATH. |
 | `setup_status` → `ready:false`, `pythonExists:false` | No venv at the resolved path. Run `setup_environment`, or set `STEMSTUDIO_PYTHON` to an existing venv python. |
 | `setup_status` → `depsImportable:false` | The venv is missing `torch`/`numpy`/`soundfile`. Run `setup_environment` to (re)install `python/requirements.txt`. |
 | `separate_stems` fails immediately with a worker error | The worker rejected the requested `engine`/`quality`. Use a supported engine and `fast`/`high`, or update the worker. |

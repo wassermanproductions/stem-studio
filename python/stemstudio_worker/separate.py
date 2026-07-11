@@ -1,3 +1,4 @@
+# Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 """Engine-agnostic separation CLI.
 
 Usage::
@@ -12,8 +13,8 @@ emits line-delimited JSON progress on stdout:
     {"event":"error","message":"..."}
 
 The separation itself is delegated to an ``Engine`` (see ``Engine`` protocol
-below). The default engine is the dependency-light band-splitter in
-``engine_stub.EngineStub``; swap it out to plug in a real model.
+below). Public Windows production runs licensed TIGER; macOS/Linux retain the
+upstream engine set, including the dependency-light stub.
 """
 
 from __future__ import annotations
@@ -35,6 +36,19 @@ STEM_FILES: Dict[str, str] = {
 }
 
 ProgressCb = Callable[[str, float], None]
+
+# MVSEP checkpoints do not publish a clear license. Public Windows binaries
+# default this off and their app/MCP processes force it off. macOS/Linux retain
+# the upstream engine behavior; source-only research runs can opt in/out with
+# the environment variable.
+UNLICENSED_ENGINES_ENABLED = os.environ.get(
+    "STEMSTUDIO_ENABLE_UNLICENSED_ENGINES",
+    "0" if os.name == "nt" else "1",
+) == "1"
+TEST_ENGINES_ENABLED = os.environ.get(
+    "STEMSTUDIO_ENABLE_TEST_ENGINES",
+    "0" if os.name == "nt" else "1",
+) == "1"
 
 
 class Engine(Protocol):
@@ -174,11 +188,18 @@ def build_engine(name: str, quality: str, cache_dir: str | None) -> Engine:
     * ``tiger`` is the TIGER-DnR ML model; ``mvsep`` is MVSEP-CDX23 (HTDemucs);
       ``stub`` is the dependency-light band-splitter (no torch required).
     """
+    if (name == "mvsep" or quality == "max") and not UNLICENSED_ENGINES_ENABLED:
+        raise ValueError(
+            "MVSEP and Max are disabled in public builds because the checkpoint "
+            "license has not been established"
+        )
     if quality == "max":
         from .engine_max import EngineMax
 
         return EngineMax(cache_dir=cache_dir)
     if name == "stub":
+        if not TEST_ENGINES_ENABLED:
+            raise ValueError("the stub engine is unavailable in this distribution")
         from .engine_stub import EngineStub
 
         return EngineStub()
@@ -192,15 +213,25 @@ def build_engine(name: str, quality: str, cache_dir: str | None) -> Engine:
         # A bare `--engine mvsep` runs a single checkpoint; the ensemble is
         # reserved for `max` quality on CUDA (see EngineMax).
         return EngineMvsep(cache_dir=cache_dir, ensemble=False)
-    raise ValueError(
-        f"unknown engine '{name}' (expected 'tiger', 'mvsep', or 'stub')"
+    raise ValueError(f"unknown engine '{name}'")
+
+
+def available_engines() -> list[str]:
+    return (
+        ["tiger"]
+        + (["mvsep"] if UNLICENSED_ENGINES_ENABLED else [])
+        + (["stub"] if TEST_ENGINES_ENABLED else [])
     )
+
+
+def available_qualities() -> list[str]:
+    return ["fast", "high"] + (["max"] if UNLICENSED_ENGINES_ENABLED else [])
 
 
 def probe() -> dict:
     """Return one dict describing the worker's torch/device stack. Printed as a
     single JSON line by ``--probe`` and used by the app to default the quality
-    tier (cuda→max, mps→high, cpu→fast)."""
+    tier (Windows GPU→high; non-Windows CUDA→max; CPU→fast)."""
     from . import device
 
     torch_version: str | None = None
@@ -216,7 +247,8 @@ def probe() -> dict:
         "cuda": device.cuda_available(),
         "mps": device.mps_available(),
         "torch": torch_version,
-        "engines": ["tiger", "mvsep", "stub"],
+        "engines": available_engines(),
+        "qualities": available_qualities(),
     }
 
 
@@ -232,15 +264,14 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--engine",
         default="tiger",
-        choices=["tiger", "mvsep", "stub"],
-        help="separation engine (default: tiger; ignored when --quality max)",
+        choices=available_engines(),
+        help="separation engine (public Windows build: tiger)",
     )
     parser.add_argument(
         "--quality",
         default="fast",
-        choices=["fast", "high", "max"],
-        help="quality mode; 'high' runs a TTA ensemble (tiger), 'max' blends "
-        "TIGER-high with MVSEP-CDX23 (implies both engines). Default: fast",
+        choices=available_qualities(),
+        help="quality mode; 'high' runs a TTA ensemble. Default: fast",
     )
     parser.add_argument(
         "--cache-dir",
@@ -267,7 +298,8 @@ def main(argv=None) -> int:
                     "cuda": False,
                     "mps": False,
                     "torch": None,
-                    "engines": ["tiger", "mvsep", "stub"],
+                    "engines": available_engines(),
+                    "qualities": available_qualities(),
                     "error": str(exc),
                 }
             )

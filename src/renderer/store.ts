@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Application state (zustand). Models the job as a state machine:
  *
@@ -11,7 +12,7 @@
 
 import { create } from 'zustand'
 import {
-  defaultQualityForDevice,
+  defaultQualityForProbe,
   type ProbeResult,
   type JobProgress,
   type JobResult,
@@ -97,8 +98,7 @@ interface StemStudioState {
   input: ProbeResult | null
   outputDir: string | null
   multitrackVideo: boolean
-  /** Selected quality tier: `fast` | `high` | `max`. Defaulted from the probed
-   * device (cuda→max, mps→high, cpu→fast) and user-adjustable. */
+  /** Selected quality tier. Windows exposes Fast/High; macOS/Linux retain Max. */
   quality: QualityMode
   /** Optional dialogue-polish pass: reduce residual music/effects bleed in the
    * voices. Off by default; a session preference (preserved across reset). */
@@ -124,7 +124,7 @@ interface StemStudioState {
   /** Store the probe result and default the quality tier from its device
    * (unless the user has already changed it this session). */
   applyProbe(probe: WorkerProbe): void
-  beginSeparate(): void
+  beginSeparate(jobId: string): void
   applyProgress(p: JobProgress): void
   appendSetup(detail: string): void
   finishDone(result: JobResult): void
@@ -183,17 +183,18 @@ export const useStore = create<StemStudioState>((set, get) => ({
     set({
       probe,
       // Default the tier from the device unless the user already picked one.
-      quality: userChoseQuality ? get().quality : defaultQualityForDevice(probe.device)
+      quality: userChoseQuality ? get().quality : defaultQualityForProbe(probe)
     }),
 
-  beginSeparate: () =>
+  beginSeparate: (jobId) =>
     set({
       status: 'extracting',
       stage: 'extracting',
       stagePercent: -1,
       result: null,
       error: null,
-      setupLog: []
+      setupLog: [],
+      currentJobId: jobId
     }),
 
   applyProgress: (p) =>

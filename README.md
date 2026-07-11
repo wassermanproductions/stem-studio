@@ -1,3 +1,4 @@
+<!-- Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md. -->
 <div align="center">
 
 # Stem Studio
@@ -18,7 +19,7 @@ A "married" mix is one where dialogue, music, and sound effects are baked onto a
 
 Output is three broadcast-ready **WAV** files (48 kHz, 24-bit), plus a **`<name>_MARRIED.wav`** — the full original mix conformed to the same spec so all four files are format-identical and sample-aligned. When the input is a video, Stem Studio can also remux the original picture with the three stems as separate, labelled audio tracks into a **`<name>_STEMS.mov`** you drop straight into any NLE.
 
-**Current version: 1.0.0**
+**Current version: 1.1.0**
 
 Stem Studio is part of Sam Wasserman's AI-film tool suite (Blockout, Motion Previs Studio, Storyboard Reference Studio).
 
@@ -60,7 +61,7 @@ All four WAVs are format-identical and sample-aligned. Everything runs **locally
 1. Open a video (`mp4` / `mov` / `mkv` / `webm`) or audio (`wav` / `mp3` / `aac` / `flac` / `m4a`) file — drag-drop or **Open File**.
 2. Stem Studio probes it (duration, sample rate, channels, whether it has picture), then normalizes the audio to the separation engine's working rate.
 3. It runs the separation worker, streaming live progress: *Extracting audio → Loading engine → Separating → Writing stems*.
-4. You get `<name>_DIALOGUE.wav`, `<name>_MUSIC.wav`, `<name>_SFX.wav`, and `<name>_MARRIED.wav` (the conformed full mix) in your chosen output folder — with per-stem preview playback and **Reveal in Finder**. Video inputs optionally also produce `<name>_STEMS.mov`.
+4. You get `<name>_DIALOGUE.wav`, `<name>_MUSIC.wav`, `<name>_SFX.wav`, and `<name>_MARRIED.wav` (the conformed full mix) in your chosen output folder — with per-stem preview playback and **Show in Folder** (or **Reveal in Finder** on macOS). Video inputs optionally also produce `<name>_STEMS.mov`.
 
 ### The "nothing lost" guarantee
 
@@ -68,14 +69,19 @@ The three stems sum back to the original mix **exactly, sample-for-sample** — 
 
 ## Requirements
 
-- **macOS** (Apple silicon) or **Linux arm64 + CUDA** — for example an [NVIDIA DGX Spark](#running-on-nvidia-dgx-spark). Windows targets are configured but untested.
-- **ffmpeg / ffprobe** — macOS `brew install ffmpeg`; Linux `sudo apt install ffmpeg`. Stem Studio looks in `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, then `PATH`.
-- **Python 3.10+** — `brew install python`. On first separation, Stem Studio builds its own virtual environment under the app's data folder and installs the worker's libraries; you don't manage it.
+- **Windows 11 x64**, **macOS Apple silicon**, or **Linux arm64 + CUDA** (for example an [NVIDIA DGX Spark](#running-on-nvidia-dgx-spark)). Windows 10 is best effort.
+- Windows packages include a checksum-verified BtbN GPL FFmpeg/FFprobe pair and uv bootstrapper, with no system Python, PATH, or registry changes. macOS arm64 packages build their audited GPL media pair from pinned source; Linux keeps the existing system-tool fallback and never bundles another platform's runtime.
+- macOS/Linux source builds may use system FFmpeg and Python 3.10+ through the existing fallback paths.
 - **Node 22+** — for development only.
 
 ## Install & first run
 
-On the **first separation**, Stem Studio sets up its Python environment and downloads the separation engine's model files automatically — you don't fetch anything by hand. Expect a one-time download of a few hundred MB up to roughly 2 GB (most of that is PyTorch), and a few minutes before the first job starts. After that, everything is cached and subsequent runs start quickly.
+On the **first separation**, Stem Studio sets up its private Python environment and downloads the pinned separation model automatically. Windows installs CPython 3.12.10 inside the app data directory using bundled uv 0.11.28, preflights 6 GB of free space, and marks the runtime ready atomically so an interrupted setup can safely retry. Nothing is added to system PATH or the registry.
+
+Windows defaults to the certified CPU profile. NVIDIA users may opt into the
+experimental CUDA 12.8 profile by setting `STEMSTUDIO_WINDOWS_PROFILE=cuda`
+before launch. If CUDA installation or verification fails, setup removes the
+incomplete environment and automatically rebuilds the pinned CPU profile.
 
 ### Quality modes
 
@@ -83,9 +89,22 @@ Pick a quality tier in the UI (or with `--quality` on the CLI):
 
 - **Fast** — a quick single pass. The default on machines without a GPU.
 - **High** — multi-pass; better separation, a few times slower.
-- **Max** — a dual-engine blend for the best quality, and the slowest. Best on a CUDA machine.
 
 The UI defaults the tier to the compute device it detects, and you can always change it.
+
+### Windows installer status
+
+The Windows target is an unsigned, assisted, per-user NSIS installer for
+Windows 11 x64. Because the prerelease is unsigned, Windows SmartScreen may
+show an unknown-publisher warning; verify the published SHA-256 before choosing
+**More info → Run anyway**.
+
+`npm run package:win` builds the generic upstream-ready identity after native
+asset preparation, notice validation, and the fail-closed redistribution audit.
+Derivative distributions must keep their identity overlays on their own
+release branches so they cannot overwrite this build.
+
+Before publishing, complete the [Windows VM acceptance checklist](docs/WINDOWS_VM_ACCEPTANCE.md).
 
 ### Polish dialogue
 
@@ -124,8 +143,8 @@ PYTHONPATH=python STEMSTUDIO_CACHE_DIR=cache/models .venv/bin/python \
   -m stemstudio_worker.separate --input input.wav --outdir /tmp/stems \
   --engine tiger --quality fast
 
-# torch-free band-split stub (for tests / torch-free environments)
-PYTHONPATH=python .venv/bin/python -m stemstudio_worker.separate \
+# torch-free band-split stub (test harness only)
+STEMSTUDIO_ENABLE_TEST_ENGINES=1 PYTHONPATH=python .venv/bin/python -m stemstudio_worker.separate \
   --input input.wav --outdir /tmp/stems --engine stub
 ```
 
@@ -134,7 +153,7 @@ The worker CLI is:
 ```
 python -m stemstudio_worker.separate \
   --input <wav> --outdir <dir> \
-  [--engine tiger|mvsep|stub] [--quality fast|high|max] [--cache-dir <dir>] \
+  [--engine tiger] [--quality fast|high] [--cache-dir <dir>] \
   [--polish-dialogue]
 ```
 
@@ -144,10 +163,10 @@ and `python -m stemstudio_worker.separate --probe` prints one JSON line describi
 
 ## Separation engine
 
-The Python worker is **engine-agnostic**: `separate.py` owns the CLI, WAV I/O, and progress protocol, while the actual separation is provided by interchangeable **separation engine modules** behind a common interface. A dependency-light band-split **stub** engine (`--engine stub`) is always available for tests and torch-free environments; the neural separation engines download their model files on first use.
+The Python worker is **engine-agnostic**: `separate.py` owns the CLI, WAV I/O, and progress protocol, while the actual separation is provided by interchangeable **separation engine modules** behind a common interface. Public Windows production configuration exposes licensed TIGER only. Existing macOS/Linux behavior retains the upstream MVSEP/Max and dependency-light stub paths; Windows test runs can enable the stub explicitly with `STEMSTUDIO_ENABLE_TEST_ENGINES=1`.
 
 - **Device.** Selection order everywhere is **CUDA → MPS → CPU**; override with `STEMSTUDIO_DEVICE=cuda|mps|cpu`. On Apple silicon that means MPS; on an NVIDIA box (e.g. a [DGX Spark](#running-on-nvidia-dgx-spark)) it means CUDA. A GPU is *strongly* preferred — CPU separation is dramatically slower. Run `python -m stemstudio_worker.separate --probe` to print the resolved device as one JSON line.
-- **Quality modes** (`--quality fast|high|max`, UI selector). `fast` is a quick single pass; `high` is a multi-pass ensemble that separates better for a few times the runtime; `max` blends two engines for the best quality at the highest cost (best on a CUDA machine). The UI defaults the tier to the detected device and you can always change it.
+- **Quality modes.** Public Windows builds expose `fast|high`: `fast` is a quick single pass and `high` is a slower multi-pass ensemble. Existing macOS/Linux builds also retain upstream `max` (the dual-engine blend). Windows accelerators default to High, non-Windows CUDA defaults to Max, MPS defaults to High, and CPU defaults to Fast.
 - **Chunked overlap-add.** Long audio is processed in bounded ~30 s blocks with a 1 s Hann-crossfaded overlap (`pipeline.chunked_overlap_add`), so peak memory is independent of input length and blocks join without seams.
 - **Mixture consistency ("nothing lost").** After separation the residual `mix − (dialogue + music + effects)` is folded back into the effects stem, so the three stems sum to the original mix **sample-for-sample** (verified `max|residual| < 1e-6`). The worker writes 32-bit float stems to preserve this bit-exactly through to the ffmpeg delivery step.
 
@@ -163,7 +182,7 @@ class Engine(Protocol):
         ...
 ```
 
-**CLI:** `python -m stemstudio_worker.separate --input <wav> --outdir <dir> [--engine tiger|mvsep|stub] [--quality fast|high|max] [--cache-dir <dir>]` writes `dialogue.wav`, `music.wav`, `effects.wav` into `<dir>` (defaults: `--engine tiger --quality fast`). `python -m stemstudio_worker.separate --probe` prints one JSON line describing the device/torch stack and exits.
+**CLI:** `python -m stemstudio_worker.separate --input <wav> --outdir <dir> [--engine tiger] [--quality fast|high] [--cache-dir <dir>]` writes `dialogue.wav`, `music.wav`, `effects.wav` into `<dir>` (defaults: `--engine tiger --quality fast`). `python -m stemstudio_worker.separate --probe` prints one JSON line describing the device/torch stack and its available engines/qualities. Windows defaults to TIGER Fast/High and requires the explicit source-only research gate for MVSEP/Max; macOS/Linux retain their existing engine choices.
 
 **Stdout — line-delimited JSON:**
 
@@ -194,12 +213,12 @@ The `_STEMS.mov` carries the three stems + video; the format-identical, sample-a
 
 ## Running on NVIDIA DGX Spark
 
-Stem Studio runs on an **NVIDIA DGX Spark** (GB10 Grace Blackwell, DGX OS = Ubuntu-based, arm64, CUDA, 128 GB unified memory) — where the **Max** tier is the default and comfortably fast. First-run steps:
+Stem Studio runs on an **NVIDIA DGX Spark** (GB10 Grace Blackwell, DGX OS = Ubuntu-based, arm64, CUDA, 128 GB unified memory), where the existing Linux **Max** tier remains the default. First-run steps:
 
 1. **ffmpeg** — `sudo apt update && sudo apt install -y ffmpeg`. Stem Studio resolves `ffmpeg`/`ffprobe` from `/usr/bin`, `/usr/local/bin`, then `PATH`.
 2. **Python 3.10+** — DGX OS ships a suitable `python3`; Stem Studio builds and manages its own venv under the app's data folder on first separation (no manual venv needed).
 3. **PyTorch + CUDA** — first-run setup installs the worker's libraries, then checks `torch.cuda.is_available()`. If an NVIDIA GPU is present (`nvidia-smi`) but the default wheel is CPU-only, it automatically reinstalls `torch`/`torchaudio` from the CUDA aarch64 index (`https://download.pytorch.org/whl/cu128`; cu128 = CUDA 12.8, required for Blackwell). This step is a large download — allow a few minutes.
-4. **Expected behavior** — the device probe reports `cuda`, so the UI defaults the quality selector to **Max**. The separation engines' model files download on first Max run. Everything runs locally on the GPU.
+4. **Expected behavior** — the device probe reports `cuda`, so the Linux UI retains its upstream **Max** default. The pinned TIGER model downloads on first use. Everything runs locally on the GPU.
 
 ### Performance
 
@@ -210,9 +229,8 @@ Measured on a DGX Spark (GB10, CUDA 13, torch 2.13) for a 100 s stereo clip, war
 | Tier | Before | After | Approx. RTF (after) |
 | --- | --- | --- | --- |
 | `tiger --quality fast` | 2m37s | 1m35s | ~0.95× |
-| `--quality max` (TIGER-high TTA + MVSEP ensemble) | 7m50s | 3m36s | ~2.2× |
 
-RTF is wall-clock ÷ audio duration (lower is faster; below 1.0× is faster than realtime). The steady-state TIGER separation itself runs at ~0.6× realtime; the end-to-end wall additionally includes model load, the one-time compile warmup, and WAV I/O. The `max` tier is heavier because it also runs the 3-checkpoint MVSEP ensemble.
+RTF is wall-clock ÷ audio duration (lower is faster; below 1.0× is faster than realtime). The steady-state TIGER separation itself runs at ~0.6× realtime; the end-to-end wall additionally includes model load, the one-time compile warmup, and WAV I/O.
 
 Packaging Linux builds (AppImage + `.deb`, arm64) is configured in `electron-builder.yml` under `linux`.
 

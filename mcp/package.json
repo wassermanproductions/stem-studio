@@ -1,6 +1,6 @@
 {
   "name": "stem-studio-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP stdio server that drives the Stem Studio separation pipeline headlessly (no Electron).",
   "license": "Apache-2.0",
   "author": "Sam Wasserman (wassermanproductions.com)",
@@ -18,9 +18,10 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/launcher-command.test.mjs",
     "test:watch": "vitest",
-    "smoke": "npm run build && node scripts/smoke.mjs"
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "smoke:packaged": "node scripts/packaged-smoke.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",

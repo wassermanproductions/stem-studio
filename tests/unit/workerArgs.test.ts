@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import { describe, it, expect } from 'vitest'
 import { workerArgs, probeWorkerArgs } from '@shared/workerArgs'
 import { DEFAULT_ENGINE } from '@shared/types'
@@ -33,17 +34,6 @@ describe('workerArgs', () => {
   it('honours an explicit engine override (stub)', () => {
     const a = workerArgs({ inputWav: '/i.wav', outDir: '/o', engine: 'stub' })
     expect(a).toEqual(expect.arrayContaining(['--engine', 'stub']))
-  })
-
-  it('supports the mvsep engine and max quality', () => {
-    const a = workerArgs({
-      inputWav: '/i.wav',
-      outDir: '/o',
-      engine: 'mvsep',
-      quality: 'max'
-    })
-    expect(a).toEqual(expect.arrayContaining(['--engine', 'mvsep']))
-    expect(a).toEqual(expect.arrayContaining(['--quality', 'max']))
   })
 
   it('adds --polish-dialogue only when requested', () => {

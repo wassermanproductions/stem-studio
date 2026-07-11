@@ -1,0 +1,169 @@
+name: ci
+
+on:
+  push:
+    branches: ['main', 'feature/windows-port']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run check:metadata
+      - run: npm run notices:check
+      - run: npm test
+      - run: npm ci --prefix mcp
+      - run: npm run typecheck --prefix mcp
+      - run: npm test --prefix mcp
+      - run: npm run build --prefix mcp
+      - run: npm run smoke:packaged --prefix mcp
+      - name: Python stub pipeline
+        run: |
+          python3 -m venv .venv-stub
+          .venv-stub/bin/pip install numpy scipy soundfile
+          PYTHONPATH=python .venv-stub/bin/python python/test_worker.py
+          PYTHONPATH=python .venv-stub/bin/python -c "from stemstudio_worker.separate import available_engines,available_qualities; assert available_engines() == ['tiger','mvsep','stub']; assert available_qualities() == ['fast','high','max']"
+
+  macos-smoke:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix mcp
+      - name: Install media build prerequisites
+        run: brew install pkg-config yasm nasm cmake meson ninja
+      - run: npm run prepare:ffmpeg:mac
+      - run: node scripts/audit-media-binaries.mjs --platform mac
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run build --prefix mcp
+      - name: Nested-path stub pipeline
+        run: |
+          SMOKE_ROOT="$RUNNER_TEMP/OneDrive - Studio/Director's Cut/场景 Runtime"
+          python3 -m venv "$SMOKE_ROOT/Private Python"
+          "$SMOKE_ROOT/Private Python/bin/pip" install numpy scipy soundfile
+          STEMSTUDIO_ROOT="$PWD" \
+          STEMSTUDIO_PYTHON="$SMOKE_ROOT/Private Python/bin/python" \
+          STEMSTUDIO_FFMPEG="$PWD/build/runtime/macos-arm64/ffmpeg" \
+          STEMSTUDIO_FFPROBE="$PWD/build/runtime/macos-arm64/ffprobe" \
+          STEMSTUDIO_SMOKE_ROOT="$SMOKE_ROOT/Pipeline Output" \
+          npm run smoke --prefix mcp
+      - run: npx electron-builder --mac dir --arm64 --config electron-builder.yml --publish never
+      - name: Verify macOS-only packaged runtime
+        run: |
+          resources="release/mac-arm64/Stem Studio.app/Contents/Resources"
+          test -x "$resources/runtime-bootstrap/macos-arm64/ffmpeg"
+          test -x "$resources/runtime-bootstrap/macos-arm64/ffprobe"
+          test -x "$resources/mcp/stem-studio-mcp"
+          test -f "$resources/mcp/package.json"
+          test -f "$resources/stem-studio-distribution.json"
+          test ! -e "$resources/runtime-bootstrap/windows"
+          node scripts/check-packaged-identity.mjs \
+            "$resources/stem-studio-distribution.json" build/identity.generic.json
+      - name: Packaged runtime smoke with system tools removed from PATH
+        run: |
+          env PATH=/usr/bin:/bin "release/mac-arm64/Stem Studio.app/Contents/MacOS/Stem Studio" --smoke-runtime
+
+  windows-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix mcp
+      - run: npm run prepare:win-runtime
+      - run: node scripts/audit-media-binaries.mjs --platform windows
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run typecheck --prefix mcp
+      - run: npm test --prefix mcp
+      - run: npm run build
+      - run: npm run build --prefix mcp
+      - name: Nested-path private Python stub pipeline
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "OneDrive - Studio\Director's Cut\场景 Runtime"
+          $uv = Join-Path $PWD 'build/runtime/windows/uv.exe'
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $root 'Managed Python'
+          $env:UV_CACHE_DIR = Join-Path $root 'uv Cache'
+          $env:UV_MANAGED_PYTHON = '1'
+          & $uv python install 3.12.10
+          & $uv venv --managed-python --python 3.12.10 (Join-Path $root 'Private Env')
+          $python = Join-Path $root 'Private Env/Scripts/python.exe'
+          & $uv pip install --python $python numpy scipy soundfile
+          $env:STEMSTUDIO_ROOT = $PWD
+          $env:STEMSTUDIO_PYTHON = $python
+          $env:STEMSTUDIO_FFMPEG = Join-Path $PWD 'build/runtime/windows/ffmpeg.exe'
+          $env:STEMSTUDIO_FFPROBE = Join-Path $PWD 'build/runtime/windows/ffprobe.exe'
+          $env:STEMSTUDIO_SMOKE_ROOT = Join-Path $root 'Pipeline Output'
+          npm run smoke --prefix mcp
+          & $python -c "import sys; sys.path.insert(0, r'$PWD\python'); from stemstudio_worker.separate import available_engines, available_qualities; assert available_engines() == ['tiger']; assert available_qualities() == ['fast', 'high']"
+      - run: npx electron-builder --win nsis --x64 --config electron-builder.yml --publish never
+      - name: Packaged Unicode waveform and Show-in-Folder smoke
+        run: npm run smoke:waveform:packaged
+      - name: Verify packaged private runtime inputs
+        shell: pwsh
+        run: |
+          $resources = Get-ChildItem release -Recurse -Directory | Where-Object Name -eq 'resources' | Select-Object -First 1
+          if (-not $resources) { throw 'No packaged resources directory found' }
+          @(
+            'runtime-bootstrap/windows/uv.exe',
+            'runtime-bootstrap/windows/ffmpeg.exe',
+            'runtime-bootstrap/windows/ffprobe.exe',
+            'runtime-bootstrap/windows/LICENSE-FFmpeg.txt',
+            'runtime-bootstrap/windows/media-provenance.json',
+            'runtime-bootstrap/windows/LICENSE-uv-apache',
+            'python/requirements-windows-cpu.lock',
+            'mcp/index.js',
+            'mcp/package.json',
+            'mcp/stem-studio-mcp.cmd',
+            'stem-studio-distribution.json'
+          ) | ForEach-Object {
+            if (-not (Test-Path (Join-Path $resources.FullName $_))) { throw "Missing packaged resource: $_" }
+          }
+          if (Test-Path (Join-Path $resources.FullName 'runtime-bootstrap/macos-arm64')) {
+            throw 'Windows package contains the macOS media runtime'
+          }
+          node scripts/check-packaged-identity.mjs `
+            (Join-Path $resources.FullName 'stem-studio-distribution.json') `
+            build/identity.generic.json
+      - name: Unpacked app runtime smoke with PATH stripped
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'release/win-unpacked/Stem Studio.exe'
+          $oldPath = $env:PATH
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          $process = Start-Process $exe -ArgumentList '--smoke-runtime' -Wait -PassThru
+          $env:PATH = $oldPath
+          if ($process.ExitCode -ne 0) { throw "Unpacked runtime smoke exited $($process.ExitCode)" }
+      - name: Silent per-user install, launch, uninstall, and shortcut checks
+        shell: pwsh
+        run: ./scripts/windows-installer-smoke.ps1
+      - name: Microsoft Defender installer scan
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release -File -Filter '*.exe' | Select-Object -First 1
+          if (Get-Command Start-MpScan -ErrorAction SilentlyContinue) {
+            try { Start-MpScan -ScanType CustomScan -ScanPath $installer.FullName }
+            catch { Write-Warning "Defender scan unavailable on this runner: $_" }
+          } else {
+            Write-Warning 'Defender cmdlets unavailable on this runner; manual VM scan remains required.'
+          }

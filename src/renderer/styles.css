@@ -1,3 +1,4 @@
+/* Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md. */
 /* ==========================================================================
    Stem Studio — design system
    Palette from the logo: near-black field, cyan → blue → violet gradient
@@ -95,6 +96,11 @@ body::before {
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   backdrop-filter: blur(8px);
+}
+
+.platform-windows .titlebar,
+.platform-linux .titlebar {
+  padding-left: 16px;
 }
 
 .titlebar-logo {

@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 import React, { useEffect, useState } from 'react'
 import { useStore } from './store'
 import { loadProbe, openViaDialog } from './loadInput'
@@ -8,6 +9,7 @@ import { DoneView } from './views/DoneView'
 import { ErrorView } from './views/ErrorView'
 import { CreditLine, AboutPanel } from './views/About'
 import logo from './assets/logo.png'
+import type { PlatformInfo } from '@shared/types'
 
 const APP_VERSION = window.stemstudio.appVersion
 
@@ -33,6 +35,11 @@ export function App(): React.JSX.Element {
   }, [applyProgress, appendSetup, finishDone, finishError, finishCancelled])
 
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [platformInfo, setPlatformInfo] = useState<PlatformInfo | null>(null)
+
+  useEffect(() => {
+    void window.stemstudio.platformInfo().then(setPlatformInfo)
+  }, [])
 
   // Probe the device once on startup to default the quality tier.
   useEffect(() => {
@@ -49,10 +56,10 @@ export function App(): React.JSX.Element {
     status === 'writing'
 
   return (
-    <div className="app">
+    <div className={`app platform-${platformInfo?.platform ?? 'unknown'}`}>
       <header className="titlebar">
         <img className="titlebar-logo" src={logo} alt="" aria-hidden />
-        <span className="app-name">Stem Studio</span>
+        <span className="app-name">{platformInfo?.appName ?? 'Stem Studio'}</span>
         <div className="titlebar-spacer" />
         {probe && (
           <span className="titlebar-status" title="Compute device the engines will run on">
@@ -64,15 +71,23 @@ export function App(): React.JSX.Element {
 
       <main className="content">
         {status === 'idle' && <DropView />}
-        {status === 'ready' && <ReadyView />}
+        {status === 'ready' && <ReadyView platformInfo={platformInfo} />}
         {inProgress && <ProgressView />}
         {status === 'done' && <DoneView />}
         {status === 'error' && <ErrorView />}
-        {status === 'cancelled' && <ReadyView note="Separation cancelled." />}
+        {status === 'cancelled' && (
+          <ReadyView note="Separation cancelled." platformInfo={platformInfo} />
+        )}
       </main>
 
       <footer className="footer">
         <CreditLine />
+        {platformInfo?.maintainerCredit && (
+          <>
+            <span className="footer-sep">·</span>
+            <span>{platformInfo.maintainerCredit}</span>
+          </>
+        )}
         <span className="footer-sep">·</span>
         <button
           type="button"
@@ -84,7 +99,13 @@ export function App(): React.JSX.Element {
         </button>
       </footer>
 
-      {aboutOpen && <AboutPanel version={APP_VERSION} onClose={() => setAboutOpen(false)} />}
+      {aboutOpen && (
+        <AboutPanel
+          version={APP_VERSION}
+          platformInfo={platformInfo}
+          onClose={() => setAboutOpen(false)}
+        />
+      )}
     </div>
   )
 }

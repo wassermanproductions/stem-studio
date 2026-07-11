@@ -1,3 +1,4 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * Job orchestration: extract audio -> (setup venv) -> run Python worker ->
  * convert stems to delivery WAVs -> (optionally) remux multitrack .mov.
@@ -9,7 +10,6 @@ import { app } from 'electron'
 import { spawn, type ChildProcess } from 'child_process'
 import { mkdir, rm } from 'fs/promises'
 import { join, basename, extname } from 'path'
-import { randomUUID } from 'crypto'
 
 import {
   extractAudioArgs,
@@ -22,7 +22,10 @@ import {
   STEM_SUFFIX,
   MARRIED_SUFFIX,
   DEFAULT_ENGINE,
+  productionQualitiesForPlatform,
   resolveQuality,
+  type AppPlatform,
+  type QualityMode,
   type StemKind,
   type SeparateOptions,
   type JobProgress,
@@ -32,6 +35,13 @@ import {
 import { ffmpegPath, runFfmpeg, probe } from './ffmpeg'
 import { findReadyPython, setupUserVenv, workerRoot } from './pythonEnv'
 import { LineParser } from '../shared/workerProtocol'
+import { childSpawnOptions, terminateProcessTree, trackProcess } from './process'
+import {
+  cleanupStagedDeliveries,
+  promoteStagedDeliveries,
+  stagedDeliveryPath,
+  type StagedDelivery
+} from '../shared/atomicDeliveries'
 
 /** Maps a worker stem key to the delivery StemKind. */
 const WORKER_TO_STEM: Record<string, StemKind> = {
@@ -52,26 +62,46 @@ interface RunCallbacks {
 }
 
 /** Live jobs, so cancel() can reach the child process. */
-const active = new Map<string, { child?: ChildProcess; cancelled: boolean; dir: string }>()
+interface ActiveJob {
+  children: Set<ChildProcess>
+  cancelled: boolean
+  dir: string
+  settled: Promise<void>
+}
 
-export function cancelJob(jobId: string): void {
+const active = new Map<string, ActiveJob>()
+
+function appPlatform(): AppPlatform {
+  return process.platform === 'darwin'
+    ? 'mac'
+    : process.platform === 'win32'
+      ? 'windows'
+      : 'linux'
+}
+
+function productionWorkerEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    // Public Windows binaries never enable the unlicensed checkpoint path.
+    // Non-Windows builds retain upstream behavior, while allowing an explicit
+    // source-user opt-out with STEMSTUDIO_ENABLE_UNLICENSED_ENGINES=0.
+    STEMSTUDIO_ENABLE_UNLICENSED_ENGINES:
+      process.platform === 'win32'
+        ? '0'
+        : (process.env.STEMSTUDIO_ENABLE_UNLICENSED_ENGINES ?? '1')
+  }
+}
+
+export async function cancelJob(jobId: string): Promise<void> {
   const rec = active.get(jobId)
   if (!rec) return
   rec.cancelled = true
-  if (rec.child && rec.child.pid) {
-    try {
-      // Negative pid kills the process group (worker + children).
-      process.kill(-rec.child.pid, 'SIGKILL')
-    } catch {
-      try {
-        rec.child.kill('SIGKILL')
-      } catch {
-        /* already gone */
-      }
-    }
-  }
-  void rm(rec.dir, { recursive: true, force: true }).catch(() => {})
-  active.delete(jobId)
+  await Promise.all([...rec.children].map((child) => terminateProcessTree(child)))
+  await rec.settled
+}
+
+export async function cancelAllJobs(): Promise<void> {
+  await Promise.all([...active.keys()].map((jobId) => cancelJob(jobId)))
 }
 
 /**
@@ -79,13 +109,27 @@ export function cancelJob(jobId: string): void {
  * failure or cancellation.
  */
 export async function runJob(
+  jobId: string,
   opts: SeparateOptions,
   cb: RunCallbacks
 ): Promise<JobResult> {
-  const jobId = randomUUID()
   const jobDir = join(app.getPath('userData'), 'jobs', jobId)
-  const rec = { child: undefined as ChildProcess | undefined, cancelled: false, dir: jobDir }
+  const stagedDeliveries: StagedDelivery[] = []
+  let markSettled!: () => void
+  const settled = new Promise<void>((resolve) => { markSettled = resolve })
+  const rec: ActiveJob = {
+    children: new Set(),
+    cancelled: false,
+    dir: jobDir,
+    settled
+  }
   active.set(jobId, rec)
+
+  const processHooks = {
+    onSpawn: (child: ChildProcess) => rec.children.add(child),
+    onExit: (child: ChildProcess) => rec.children.delete(child),
+    isCancelled: () => rec.cancelled
+  }
 
   const checkCancel = () => {
     if (rec.cancelled) throw new Error('Cancelled')
@@ -93,25 +137,29 @@ export async function runJob(
 
   try {
     await mkdir(jobDir, { recursive: true })
+    checkCancel()
 
-    const info = await probe(opts.inputPath)
+    cb.onProgress({ jobId, stage: 'extracting', percent: -1 })
+    const info = await probe(opts.inputPath, processHooks)
     const base = basename(opts.inputPath, extname(opts.inputPath))
     const ffmpeg = await ffmpegPath()
 
     // 1) Extract/normalize to engine-rate stereo WAV.
-    cb.onProgress({ jobId, stage: 'extracting', percent: -1 })
     const inputWav = join(jobDir, 'input.wav')
-    await runFfmpeg(ffmpeg, extractAudioArgs(opts.inputPath, inputWav))
+    await runFfmpeg(ffmpeg, extractAudioArgs(opts.inputPath, inputWav), processHooks)
     checkCancel()
 
     // 2) Ensure a Python venv is ready (first-run setup if needed).
     let py = await findReadyPython()
     if (!py) {
       cb.onProgress({ jobId, stage: 'setup', percent: -1 })
-      py = await setupUserVenv((detail) => {
-        cb.onSetup(detail)
-        cb.onProgress({ jobId, stage: 'setup', percent: -1, detail })
-      })
+      py = await setupUserVenv(
+        (detail) => {
+          cb.onSetup(detail)
+          cb.onProgress({ jobId, stage: 'setup', percent: -1, detail })
+        },
+        processHooks
+      )
     }
     checkCancel()
 
@@ -122,11 +170,12 @@ export async function runJob(
     const cacheDir = join(app.getPath('userData'), 'models')
     await mkdir(cacheDir, { recursive: true })
     const quality = resolveQuality(opts)
+    if (!productionQualitiesForPlatform(appPlatform()).includes(quality)) {
+      throw new Error(`Quality "${quality}" is unavailable in this Windows distribution.`)
+    }
     const args = workerArgs({
       inputWav,
       outDir: workerOut,
-      // `max` quality implies both neural engines inside the worker; `--engine`
-      // is otherwise the app default separation engine.
       engine: DEFAULT_ENGINE,
       quality,
       cacheDir,
@@ -139,14 +188,18 @@ export async function runJob(
     cb.onProgress({ jobId, stage: 'writing', percent: 0 })
     await mkdir(opts.outputDir, { recursive: true })
     const stems = {} as Record<StemKind, string>
+    const stagedStems = {} as Record<StemKind, string>
     let done = 0
     for (const workerKey of Object.keys(WORKER_TO_STEM)) {
       const kind = WORKER_TO_STEM[workerKey]!
       const src = workerOutputs[workerKey]
       if (!src) throw new Error(`Worker did not produce stem "${workerKey}"`)
       const dest = join(opts.outputDir, `${base}_${STEM_SUFFIX[kind]}.wav`)
-      await runFfmpeg(ffmpeg, convertStemArgs(src, dest))
+      const staged = stagedDeliveryPath(dest, jobId)
+      stagedDeliveries.push({ finalPath: dest, stagedPath: staged })
+      await runFfmpeg(ffmpeg, convertStemArgs(src, staged), processHooks)
       stems[kind] = dest
+      stagedStems[kind] = staged
       done++
       cb.onProgress({ jobId, stage: 'writing', percent: (done / 3) * 100 })
       checkCancel()
@@ -156,7 +209,9 @@ export async function runJob(
     // delivery spec (48 kHz / 24-bit) so all four WAVs are format-identical and
     // sample-aligned. Built from the same extracted audio the stems derive from.
     const marriedMix = join(opts.outputDir, `${base}_${MARRIED_SUFFIX}.wav`)
-    await runFfmpeg(ffmpeg, marriedMixArgs(inputWav, marriedMix))
+    const stagedMarried = stagedDeliveryPath(marriedMix, jobId)
+    stagedDeliveries.push({ finalPath: marriedMix, stagedPath: stagedMarried })
+    await runFfmpeg(ffmpeg, marriedMixArgs(inputWav, stagedMarried), processHooks)
     checkCancel()
 
     // 6) Optional multitrack video remux (video inputs only). The .mov keeps
@@ -165,20 +220,29 @@ export async function runJob(
     if (opts.multitrackVideo && info.hasVideo) {
       cb.onProgress({ jobId, stage: 'remuxing', percent: -1 })
       multitrackVideo = join(opts.outputDir, `${base}_STEMS.mov`)
+      const stagedVideo = stagedDeliveryPath(multitrackVideo, jobId)
+      stagedDeliveries.push({ finalPath: multitrackVideo, stagedPath: stagedVideo })
       await runFfmpeg(
         ffmpeg,
-        remuxMultitrackArgs(opts.inputPath, stems, multitrackVideo)
+        remuxMultitrackArgs(opts.inputPath, stagedStems, stagedVideo),
+        processHooks
       )
       checkCancel()
     }
 
+    await promoteStagedDeliveries(stagedDeliveries, jobId, checkCancel)
+
     await rm(jobDir, { recursive: true, force: true }).catch(() => {})
     active.delete(jobId)
+    markSettled()
 
     return { jobId, stems, marriedMix, multitrackVideo, outputDir: opts.outputDir }
   } catch (err) {
+    await Promise.all([...rec.children].map((child) => terminateProcessTree(child)))
+    await cleanupStagedDeliveries(stagedDeliveries).catch(() => {})
     await rm(jobDir, { recursive: true, force: true }).catch(() => {})
     active.delete(jobId)
+    markSettled()
     throw err
   }
 }
@@ -194,7 +258,8 @@ export async function probeWorker(): Promise<WorkerProbe> {
     cuda: false,
     mps: false,
     torch: null,
-    engines: ['tiger', 'mvsep', 'stub']
+    engines: process.platform === 'win32' ? ['tiger'] : ['tiger', 'mvsep', 'stub'],
+    qualities: [...productionQualitiesForPlatform(appPlatform())]
   }
   const py = await findReadyPython()
   if (!py) return fallback
@@ -202,12 +267,22 @@ export async function probeWorker(): Promise<WorkerProbe> {
   const cacheDir = join(app.getPath('userData'), 'models')
   return new Promise<WorkerProbe>((resolve) => {
     let stdout = ''
-    const child = spawn(py, probeWorkerArgs(cacheDir), {
-      cwd: workerRoot(),
-      env: { ...process.env, PYTHONPATH: workerRoot(), PYTHONUNBUFFERED: '1' },
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-    child.stdout.on('data', (b: Buffer) => (stdout += b.toString()))
+    const child = trackProcess(spawn(
+      py,
+      probeWorkerArgs(cacheDir),
+      childSpawnOptions({
+        cwd: workerRoot(),
+        env: {
+          ...productionWorkerEnv(),
+          PYTHONPATH: workerRoot(),
+          PYTHONUNBUFFERED: '1',
+          PYTHONUTF8: '1',
+          PYTHONIOENCODING: 'utf-8'
+        },
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
+    ))
+    child.stdout?.on('data', (b: Buffer) => (stdout += b.toString()))
     child.on('error', () => resolve(fallback))
     child.on('close', () => {
       // Take the last non-blank line as the JSON probe result.
@@ -225,7 +300,13 @@ export async function probeWorker(): Promise<WorkerProbe> {
             cuda: !!obj.cuda,
             mps: !!obj.mps,
             torch: typeof obj.torch === 'string' ? obj.torch : null,
-            engines: Array.isArray(obj.engines) ? obj.engines : fallback.engines
+            engines: Array.isArray(obj.engines) ? obj.engines : fallback.engines,
+            qualities: Array.isArray(obj.qualities)
+              ? obj.qualities.filter(
+                  (quality): quality is QualityMode =>
+                    quality === 'fast' || quality === 'high' || quality === 'max'
+                )
+              : fallback.qualities
           })
           return
         }
@@ -242,30 +323,33 @@ function runWorker(
   jobId: string,
   py: string,
   args: string[],
-  rec: { child?: ChildProcess; cancelled: boolean },
+  rec: ActiveJob,
   cb: RunCallbacks
 ): Promise<Record<string, string>> {
   return new Promise((resolve, reject) => {
-    const child = spawn(
+    const child = trackProcess(spawn(
       py,
       args,
-      {
+      childSpawnOptions({
         cwd: workerRoot(),
-        // Put the worker package on the path and run it in its own process
-        // group so cancel can kill the whole tree.
-        env: { ...process.env, PYTHONPATH: workerRoot(), PYTHONUNBUFFERED: '1' },
-        detached: true,
+        env: {
+          ...productionWorkerEnv(),
+          PYTHONPATH: workerRoot(),
+          PYTHONUNBUFFERED: '1',
+          PYTHONUTF8: '1',
+          PYTHONIOENCODING: 'utf-8'
+        },
         stdio: ['ignore', 'pipe', 'pipe']
-      }
-    )
-    rec.child = child
+      })
+    ))
+    rec.children.add(child)
 
     const parser = new LineParser()
     let stderr = ''
     let outputs: Record<string, string> | null = null
     let workerError: string | null = null
 
-    child.stdout.on('data', (buf: Buffer) => {
+    child.stdout?.on('data', (buf: Buffer) => {
       for (const ev of parser.push(buf.toString())) {
         if (ev.event === 'progress') {
           cb.onProgress({ jobId, stage: ev.stage, percent: ev.percent })
@@ -276,12 +360,13 @@ function runWorker(
         }
       }
     })
-    child.stderr.on('data', (b) => {
+    child.stderr?.on('data', (b) => {
       stderr += b.toString()
     })
 
     child.on('error', reject)
     child.on('close', (code) => {
+      rec.children.delete(child)
       for (const ev of parser.flush()) {
         if (ev.event === 'done') outputs = ev.outputs
         else if (ev.event === 'error') workerError = ev.message

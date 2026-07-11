@@ -1,10 +1,11 @@
+// Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md.
 /**
  * ffmpeg/ffprobe process helpers. Pure argv building lives in ./ffmpegArgs;
  * binary resolution in ./resolve. This module only spawns. Mirrors the app's
  * `src/main/ffmpeg.ts`.
  */
 
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { basename, extname } from 'node:path'
 import { probeArgs } from './ffmpegArgs.js'
 import { ffmpegPath, ffprobePath } from './resolve.js'
@@ -13,17 +14,29 @@ import {
   VIDEO_EXTENSIONS,
   type ProbeResult
 } from './types.js'
+import { childSpawnOptions, trackProcess } from './process.js'
+
+export interface ProcessHooks {
+  onSpawn?(child: ChildProcess): void
+  onExit?(child: ChildProcess): void
+  isCancelled?(): boolean
+}
 
 /** Run ffmpeg with the given args; reject with stderr tail on non-zero exit. */
-export function runFfmpeg(bin: string, args: string[]): Promise<void> {
+export function runFfmpeg(bin: string, args: string[], hooks: ProcessHooks = {}): Promise<void> {
   return new Promise((res, rej) => {
-    const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    const child = trackProcess(
+      spawn(bin, args, childSpawnOptions({ stdio: ['ignore', 'ignore', 'pipe'] }))
+    )
+    hooks.onSpawn?.(child)
     let err = ''
-    child.stderr.on('data', (b: Buffer) => {
+    child.stderr?.on('data', (b: Buffer) => {
       err += b.toString()
     })
     child.on('error', rej)
     child.on('close', (code) => {
+      hooks.onExit?.(child)
+      if (hooks.isCancelled?.()) return rej(new Error('Cancelled'))
       if (code === 0) res()
       else rej(new Error(`ffmpeg exited ${code}\n${err.slice(-4000)}`))
     })
@@ -45,24 +58,29 @@ interface FfprobeJson {
  * Probe an input file into a ProbeResult. Throws a clear error if the file is
  * missing / unreadable or ffprobe can't parse it.
  */
-export async function probe(inputPath: string): Promise<ProbeResult> {
+export async function probe(inputPath: string, hooks: ProcessHooks = {}): Promise<ProbeResult> {
   const bin = await ffprobePath()
   const json = await new Promise<FfprobeJson>((res, rej) => {
-    const child = spawn(bin, probeArgs(inputPath), {
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
+    const child = trackProcess(spawn(
+      bin,
+      probeArgs(inputPath),
+      childSpawnOptions({ stdio: ['ignore', 'pipe', 'pipe'] })
+    ))
+    hooks.onSpawn?.(child)
     let out = ''
     let err = ''
-    child.stdout.on('data', (b: Buffer) => (out += b.toString()))
-    child.stderr.on('data', (b: Buffer) => (err += b.toString()))
+    child.stdout?.on('data', (b: Buffer) => (out += b.toString()))
+    child.stderr?.on('data', (b: Buffer) => (err += b.toString()))
     child.on('error', (e) =>
       rej(
         new Error(
-          `Could not run ffprobe (${bin}): ${(e as Error).message}. Install ffmpeg (brew install ffmpeg).`
+          `Could not run the bundled media probe (${bin}): ${(e as Error).message}.`
         )
       )
     )
     child.on('close', (code) => {
+      hooks.onExit?.(child)
+      if (hooks.isCancelled?.()) return rej(new Error('Cancelled'))
       if (code !== 0)
         return rej(
           new Error(`ffprobe failed for "${inputPath}": ${err.slice(-2000) || `exit ${code}`}`)
