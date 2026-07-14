@@ -238,6 +238,15 @@ Packaging Linux builds (AppImage + `.deb`, arm64) is configured in `electron-bui
 
 An MCP stdio server lets Claude Code, Codex, or any MCP client run the pipeline headlessly (no Electron) — see [mcp/README.md](mcp/README.md).
 
+## Support
+
+A few people asked if they could send tips to support my work developing open source tools. So I set up an optional way in case anyone wants to.
+
+No pressure at all. Using the apps, sharing them, starring the repositories, and contributing code all help too. Thank you.
+
+- [GitHub Sponsors](https://github.com/sponsors/wassermanproductions)
+- [Ko-fi](https://ko-fi.com/samwasserman)
+
 ## License
 
 Apache-2.0 © 2026 Sam Wasserman. See [LICENSE](LICENSE) and [NOTICE](NOTICE) — retain the NOTICE and credit "Sam Wasserman (wassermanproductions.com · wasserman.ai)" in derivative works.
