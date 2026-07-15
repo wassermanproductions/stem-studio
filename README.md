@@ -67,6 +67,13 @@ All four WAVs are format-identical and sample-aligned. Everything runs **locally
 
 The three stems sum back to the original mix **exactly, sample-for-sample** — nothing in the source is dropped or duplicated on the way through.
 
+## Works with
+
+Stem Studio is one of three standalone filmmaking apps that fit together. Each works on its own, and they chain: measure a reference in Motion Previs Studio, block and export the shot in Blockout, then split the finished mix here once the edit is done.
+
+- **[Motion Previs Studio](https://github.com/wassermanproductions/motion-previs-studio)** — turns a reference video into pose, depth, and camera data for a shot.
+- **[Blockout](https://github.com/wassermanproductions/blockout)** — grey-box previs. Stage the scene, block the action, and export video, depth, stills, and a prompt.
+
 ## Requirements
 
 - **Windows 11 x64**, **macOS Apple silicon**, or **Linux arm64 + CUDA** (for example an [NVIDIA DGX Spark](#running-on-nvidia-dgx-spark)). Windows 10 is best effort.
