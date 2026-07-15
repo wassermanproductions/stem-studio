@@ -67,6 +67,11 @@ All four WAVs are format-identical and sample-aligned. Everything runs **locally
 
 The three stems sum back to the original mix **exactly, sample-for-sample** — nothing in the source is dropped or duplicated on the way through.
 
+## Operator handbook
+
+- [Stem Studio Operator Handbook](docs/handbooks/stem-studio-sop-handbook.md) ([PDF](docs/handbooks/stem-studio-sop-handbook.pdf))
+- [Three-App Windows Workflow Handbook](https://github.com/wassermanproductions/blockout/blob/main/docs/handbooks/three-app-workflow-handbook.md)
+
 ## Requirements
 
 - **Windows 11 x64**, **macOS Apple silicon**, or **Linux arm64 + CUDA** (for example an [NVIDIA DGX Spark](#running-on-nvidia-dgx-spark)). Windows 10 is best effort.
