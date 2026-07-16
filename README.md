@@ -241,6 +241,19 @@ RTF is wall-clock ÷ audio duration (lower is faster; below 1.0× is faster than
 
 Packaging Linux builds (AppImage + `.deb`, arm64) is configured in `electron-builder.yml` under `linux`.
 
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| First-run setup stops | Reopen Stem Studio and choose **Retry**. Use **Repair** only if the readiness check remains incomplete. |
+| The free-space preflight fails | Free at least 6 GB on the drive that holds Stem Studio's app data, then retry setup. |
+| The optional CUDA profile fails | Let setup remove the incomplete environment and rebuild the certified CPU profile automatically. Retry the separation after setup completes. |
+| An output name repeats a stem suffix | Select the original married source and process it into a clean, versioned output folder. |
+| A preview does not play | Confirm that the output file still exists, then reopen the result. |
+| A job appears stuck after **Cancel** | Wait for the worker and encoder process tree to close. Use **Repair** only if the next readiness check fails. |
+| Dialogue, Music, and SFX do not reconstruct Married | Confirm that all four files came from the same job and remain sample-aligned, then rerun the original source into a clean output folder. |
+| The multitrack MOV is missing | Confirm that the source contains video and that multitrack export was enabled. |
+
 ## Drive it from an AI agent
 
 An MCP stdio server lets Claude Code, Codex, or any MCP client run the pipeline headlessly (no Electron) — see [mcp/README.md](mcp/README.md).
