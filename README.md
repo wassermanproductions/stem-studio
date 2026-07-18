@@ -23,6 +23,22 @@ Output is three broadcast-ready **WAV** files (48 kHz, 24-bit), plus a **`<name>
 
 Stem Studio is part of Sam Wasserman's AI-film tool suite (Blockout, Motion Previs Studio, Storyboard Reference Studio).
 
+## Download
+
+**macOS (Apple Silicon) — paste one line into Terminal** (⌘-Space, type "Terminal") and it downloads the latest build, installs it to Applications, and opens it — no security warnings:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wassermanproductions/stem-studio/main/install.sh | bash
+```
+
+**Windows and Linux** — grab the installer for your platform from [GitHub Releases](https://github.com/wassermanproductions/stem-studio/releases). On Windows, if SmartScreen appears, click **More info → Run anyway**; for the Linux AppImage, `chmod +x` it first.
+
+If you download the macOS `.dmg` in a browser instead of using the installer above, macOS will falsely claim the app "is damaged" — unsigned browser downloads are quarantined. Drag the app to Applications, then run this once in Terminal and it opens normally from then on:
+
+```bash
+xattr -cr "/Applications/Stem Studio.app"
+```
+
 ## What you get
 
 For an input named `scene12`, Stem Studio delivers, in your chosen output folder:
