@@ -1,6 +1,15 @@
 <!-- Modified for cross-platform Windows support in 2026; see MODIFICATIONS.md. -->
 <div align="center">
 
+<img src="resources/logo.png" alt="Stem Studio" width="520" />
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
+  <a href="../../releases"><img src="https://img.shields.io/github/v/release/wassermanproductions/stem-studio?include_prereleases&label=download" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/platforms-macOS%20·%20Windows%20·%20Linux-2f7bf6" alt="Platforms">
+  <a href="https://ko-fi.com/samwasserman"><img src="https://img.shields.io/badge/Ko--fi-support%20Sam%20Wasserman-ff5e5b?logo=kofi&logoColor=white" alt="Support Sam Wasserman on Ko-fi"></a>
+</p>
+
 # Stem Studio
 
 **Un-marry a soundtrack.** Drop in a video or audio file where dialogue, music, and effects are mixed on one track — get back three clean stems ready for your edit.
